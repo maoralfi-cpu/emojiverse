@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#5b3df5">
+<meta name="description" content="כובש – משחק כיבוש שטח, עובד בלי אינטרנט, בלי פרסומות">
+<meta name="flypod" content="none">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>כובש</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="stats"><img id="hudAvatar" alt=""><div><b id="pct">0.0%</b><span id="kills">⚔️ 0</span></div></div>
+  <ol id="board"></ol>
+  <button id="pauseBtn" class="iconbtn" aria-label="השהה">❚❚</button>
+  <canvas id="minimap" width="110" height="110"></canvas>
+  <div id="feed"></div>
+</div>
+<div id="joyBase" class="hidden"><div id="joyKnob"></div></div>
+
+<!-- תפריט ראשי -->
+<section id="menu" class="screen">
+  <div class="card">
+    <h1>כובש</h1>
+    <p class="sub">צאו מהשטח, סגרו לולאה – והשטח שלכם!</p>
+    <label class="field">שם<input id="nameInput" maxlength="12" placeholder="השם שלך"></label>
+    <div class="label">בחרו דמות</div>
+    <div id="avatarPick"></div>
+    <div class="label">רמת קושי</div>
+    <div class="seg" id="diffSeg">
+      <button data-v="easy">קל</button><button data-v="normal">רגיל</button><button data-v="hard">קשה</button>
+    </div>
+    <button id="playBtn" class="primary">שחק ▶</button>
+    <div class="row">
+      <button id="settingsBtn">⚙️ הגדרות</button>
+      <button id="helpBtn">❓ איך משחקים</button>
+      <button id="installBtn" class="hidden">📲 התקן</button>
+    </div>
+    <div id="best" class="best"></div>
+  </div>
+</section>
+
+<!-- הגדרות -->
+<section id="settings" class="screen hidden">
+  <div class="card">
+    <h2>הגדרות</h2>
+    <div class="label">מספר יריבים</div>
+    <div class="seg" id="botsSeg"><button data-v="5">5</button><button data-v="6">6</button><button data-v="7">7</button><button data-v="8">8</button></div>
+    <div class="label">גודל מפה</div>
+    <div class="seg" id="sizeSeg"><button data-v="80">קטנה</button><button data-v="100">בינונית</button><button data-v="130">גדולה</button></div>
+    <div class="label">קצב פריימים (חיסכון בסוללה)</div>
+    <div class="seg" id="fpsSeg"><button data-v="20">20</button><button data-v="30">30</button><button data-v="60">60</button></div>
+    <div class="label">איכות תצוגה</div>
+    <div class="seg" id="dprSeg"><button data-v="1">חסכונית</button><button data-v="2">חדה</button></div>
+    <label class="check"><input type="checkbox" id="joyChk"> ג'ויסטיק על המסך (במקום החלקה)</label>
+    <label class="check"><input type="checkbox" id="miniChk"> מפה קטנה</label>
+    <label class="check"><input type="checkbox" id="vibChk"> רטט במוות</label>
+    <button id="settingsBack" class="primary">שמור וחזור</button>
+    <button id="resetBest" class="danger">איפוס שיאים</button>
+  </div>
+</section>
+
+<!-- עזרה -->
+<section id="help" class="screen hidden">
+  <div class="card">
+    <h2>איך משחקים</h2>
+    <ul class="help">
+      <li>הדמות שלך זזה כל הזמן. מחוץ לשטח שלך היא משאירה שובל.</li>
+      <li>חוזרים לשטח שלך – וכל מה שהשובל הקיף נכבש.</li>
+      <li>אם מישהו נוגע בשובל שלך – נפסלת. נגעת בשובל של יריב – הוא נפסל.</li>
+      <li>אסור לגעת בשובל של עצמך ובקצה המפה.</li>
+      <li>ראש בראש: מי שבתוך השטח שלו שורד; מחוץ לשטח – בעל השובל הארוך נפסל.</li>
+      <li><b>טלפון:</b> החלקה לכיוון הרצוי (או ג'ויסטיק בהגדרות).</li>
+      <li><b>מקלדת:</b> חיצים או WASD, ‏P/Esc להשהיה.</li>
+    </ul>
+    <button id="helpBack" class="primary">הבנתי</button>
+  </div>
+</section>
+
+<!-- השהיה -->
+<section id="paused" class="screen hidden">
+  <div class="card small">
+    <h2>מושהה</h2>
+    <button id="resumeBtn" class="primary">המשך ▶</button>
+    <button id="quitBtn">לתפריט</button>
+  </div>
+</section>
+
+<!-- סוף משחק -->
+<section id="over" class="screen hidden">
+  <div class="card small">
+    <img id="overAvatar" class="bigav" alt="">
+    <h2 id="overTitle">נפסלת!</h2>
+    <p id="overReason" class="sub"></p>
+    <div class="results">
+      <div><span>שטח מקסימלי</span><b id="overPct">0%</b></div>
+      <div><span>הריגות</span><b id="overKills">0</b></div>
+    </div>
+    <div id="overBest" class="best"></div>
+    <button id="againBtn" class="primary">שחק שוב ↻</button>
+    <button id="menuBtn">לתפריט</button>
+  </div>
+</section>
+
+<script src="js/game.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/avatars.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

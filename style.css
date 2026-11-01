@@ -1,0 +1,50 @@
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#1b1d2e;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#game{position:fixed;inset:0;width:100%;height:100%;display:block}
+.hidden{display:none!important}
+.screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,18,40,.72);padding:16px;overflow:auto;z-index:10}
+#menu{background:radial-gradient(circle at 30% 20%,#7a5cff 0,#3b2aa8 45%,#1b1d2e 100%)}
+.card{background:#fff;color:#22223a;border-radius:22px;padding:20px 18px;width:100%;max-width:420px;box-shadow:0 12px 40px rgba(0,0,0,.35);text-align:center;max-height:100%;overflow:auto}
+.card.small{max-width:340px}
+h1{margin:0;font-size:48px;letter-spacing:1px;background:linear-gradient(90deg,#5b3df5,#ff5fa2);-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{margin:4px 0 12px}
+.sub{margin:4px 0 14px;color:#666}
+.label{font-weight:600;margin:12px 0 6px;text-align:start}
+.field{display:flex;gap:10px;align-items:center;font-weight:600}
+.field input{flex:1;font-size:17px;padding:10px 12px;border-radius:12px;border:2px solid #ddd;font-family:inherit}
+button{font-family:inherit;font-size:16px;border:none;border-radius:14px;padding:11px 14px;background:#eef0ff;color:#2b2a5a;cursor:pointer;margin:4px}
+button:active{transform:scale(.97)}
+.primary{display:block;width:100%;margin:14px 0 6px;font-size:21px;font-weight:700;padding:14px;background:linear-gradient(90deg,#5b3df5,#8b5cf6);color:#fff;box-shadow:0 6px 18px rgba(91,61,245,.35)}
+.danger{background:#ffe6e6;color:#b00020;width:100%;margin:6px 0 0}
+.row{display:flex;flex-wrap:wrap;justify-content:center}
+.seg{display:flex;background:#eef0ff;border-radius:14px;padding:3px}
+.seg button{flex:1;margin:0;background:transparent;padding:9px 4px}
+.seg button.on{background:#5b3df5;color:#fff;font-weight:700}
+#avatarPick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+#avatarPick button{margin:0;padding:4px;background:#f4f4fb;border:3px solid transparent;border-radius:16px;font-size:12px;color:#444}
+#avatarPick button.on{border-color:#5b3df5;background:#ece8ff}
+#avatarPick img{width:100%;aspect-ratio:1;display:block}
+.check{display:flex;align-items:center;gap:10px;margin:12px 0 0;text-align:start}
+.check input{width:22px;height:22px}
+.best{margin-top:10px;color:#555;font-size:15px}
+.help{text-align:start;line-height:1.6;padding-inline-start:20px}
+.results{display:flex;gap:10px;margin:8px 0}
+.results div{flex:1;background:#f4f4fb;border-radius:14px;padding:10px;display:flex;flex-direction:column}
+.results span{font-size:13px;color:#666}.results b{font-size:26px}
+.bigav{width:110px;height:110px}
+#hud{position:fixed;inset:0;pointer-events:none;z-index:5;padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left)}
+#stats{position:absolute;top:10px;right:10px;display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.45);border-radius:16px;padding:6px 12px 6px 6px}
+#stats img{width:40px;height:40px}
+#stats b{display:block;font-size:22px}#stats span{font-size:14px}
+#board{position:absolute;top:10px;left:56px;margin:0;padding:6px 8px;list-style:none;background:rgba(0,0,0,.4);border-radius:14px;font-size:12px;min-width:120px}
+#board li{display:flex;align-items:center;gap:5px;padding:1px 0;white-space:nowrap}
+#board li img{width:20px;height:20px}
+#board li.me{color:#ffe14d;font-weight:700}
+#board li .p{margin-inline-start:auto;padding-inline-start:8px}
+.iconbtn{position:absolute;top:10px;left:6px;pointer-events:auto;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:16px;margin:0;padding:0}
+#minimap{position:absolute;bottom:12px;left:12px;width:110px;height:110px;border-radius:10px;background:rgba(0,0,0,.35);border:2px solid rgba(255,255,255,.35)}
+#feed{position:absolute;top:72px;right:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+#feed div{background:rgba(0,0,0,.55);padding:4px 10px;border-radius:10px;font-size:14px}
+#joyBase{position:fixed;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);z-index:6;pointer-events:none;transform:translate(-50%,-50%)}
+#joyKnob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:rgba(255,255,255,.55)}
+@media (max-height:500px){.card{padding:12px}h1{font-size:34px}#avatarPick{grid-template-columns:repeat(8,1fr)}}
