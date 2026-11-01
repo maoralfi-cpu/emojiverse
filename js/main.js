@@ -14,23 +14,22 @@
   }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 
-  var COLORS = ['#5b3df5', '#ff4d6d', '#16b978', '#ff9f1c', '#1ea7fd', '#c04bf2', '#e8c600', '#ff6fb5', '#00b3a4', '#8d6e63'];
+  var EXTRA_COLORS = ['#b04be8', '#00b3a4', '#8d6e63'];
   var BOT_NAMES = ['שועל', 'נמר', 'ינשוף', 'דב', 'זאב', 'צבי', 'נשר', 'תנין', 'פנתר', 'דולפין'];
-  var TICK_MS = 125;              // 8 תאים בשנייה
-  var RESPAWN_TICKS = 24;         // ~3 שניות
-  var VIEW_CELLS = 20;            // כמה תאים רואים לאורך הצלע הקצרה
+  var TICK_MS = 50;               // 20 צעדי לוגיקה בשנייה (קבוע)
+  var RESPAWN_TICKS = 60;         // ~3 שניות
+  var VIEW_UNITS = 24;            // כמה יחידות עולם רואים לאורך הצלע הקצרה
 
   // ---------- מצב ----------
   var canvas = $('game'), ctx = canvas.getContext('2d', { alpha: false });
   var mini = $('minimap'), mctx = mini.getContext('2d');
   var g = null, me = null, state = 'menu';
-  var W = 0, H = 0, DPR = 1, cellPx = 20;
+  var W = 0, H = 0, DPR = 1, unitPx = 20;
   var rafId = 0, lastFrame = 0, acc = 0, lastHud = 0;
-  var terr = null, terrCtx = null, terrImg = null, terrData = null;   // שטח + שובלים
-  var shadow = null, shadowCtx = null, shadowImg = null, shadowData = null;
-  var bg = null;
-  var rgb = [], trailRgb = [], darkRgb = [];
-  var camX = 0, camY = 0, effects = [], avatarURLs = [], lastBoardKey = '', startBest = { pct: 0, kills: 0 };
+  var paths = [], layer = null, layerCtx = null, layerX = 0, layerY = 0, dirtyWorld = null;
+  var mm = null, mmCtx = null, mmImg = null, mmData = null, mmDirty = false;
+  var rgb = [], trailCss = [], darkCss = [], fillCss = [], lineCss = [];
+  var camX = 0, camY = 0, effects = [], avatarURLs = [], lastBoardKey = '', startBest = { pct: 0, kills: 0 }, keysHeld = {};
 
   // ---------- תפריט ----------
   function seg(id, key, parse) {
@@ -47,7 +46,7 @@
     var el = $('avatarPick'); el.innerHTML = '';
     Avatars.list.forEach(function (a, i) {
       var b = document.createElement('button');
-      var img = new Image(); img.src = Avatars.dataURL(i, 96, COLORS[i]); img.alt = a.name;
+      var img = new Image(); img.src = Avatars.dataURL(i, 96, a.color); img.alt = a.name;
       b.appendChild(img); b.appendChild(document.createTextNode(a.name));
       if (i === S.avatar) b.classList.add('on');
       b.addEventListener('click', function () { S.avatar = i; save('kovesh.settings', S); buildAvatarPick(); });
@@ -88,74 +87,85 @@
   // ---------- התחלת משחק ----------
   function hexRgb(h) { var n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
   function mix(c, d, t) { return [Math.round(c[0] + (d[0] - c[0]) * t), Math.round(c[1] + (d[1] - c[1]) * t), Math.round(c[2] + (d[2] - c[2]) * t)]; }
+  function css(c, a) { return a == null ? 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')' : 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
 
   function startGame() {
     S.name = $('nameInput').value.trim(); save('kovesh.settings', S);
     g = new Game({ size: S.size });
     startBest = { pct: BEST.pct, kills: BEST.kills };
-    var avatars = [S.avatar], colors = [COLORS[S.avatar % COLORS.length]];
-    me = g.addPlayer({ name: S.name || 'אני', avatar: S.avatar, color: colors[0] });
-    var freeAv = []; for (var i = 0; i < Avatars.list.length; i++) if (i !== S.avatar) freeAv.push(i);
-    var freeCol = COLORS.filter(function (c) { return c !== colors[0]; });
-    shuffle(freeAv); shuffle(freeCol);
+    var myAv = S.avatar % Avatars.list.length, myCol = Avatars.list[myAv].color;
+    me = g.addPlayer({ name: S.name || 'אני', avatar: myAv, color: myCol });
+    var freeAv = []; for (var i = 0; i < Avatars.list.length; i++) if (i !== myAv) freeAv.push(i);
+    shuffle(freeAv);
     var names = BOT_NAMES.slice(); shuffle(names);
+    var extra = EXTRA_COLORS.slice();
     for (var b = 0; b < S.bots; b++) {
-      g.addPlayer({ name: names[b], isBot: true, avatar: freeAv[b % freeAv.length], color: freeCol[b % freeCol.length] });
+      var av = freeAv[b % freeAv.length];
+      // דמות שחוזרת פעמיים מקבלת צבע אחר
+      var col = b < freeAv.length ? Avatars.list[av].color : extra.shift();
+      g.addPlayer({ name: names[b], isBot: true, avatar: av, color: col });
     }
-    // צבעים לתמונת השטח
-    rgb = [[0, 0, 0]]; trailRgb = [[0, 0, 0]]; darkRgb = [[0, 0, 0]];
+    rgb = [[0, 0, 0]]; trailCss = ['']; darkCss = ['']; fillCss = ['']; lineCss = [''];
     avatarURLs = [null];
     g.players.forEach(function (p) {
       var c = hexRgb(p.color);
-      rgb[p.id] = c; trailRgb[p.id] = mix(c, [255, 255, 255], 0.45); darkRgb[p.id] = mix(c, [0, 0, 0], 0.35);
+      rgb[p.id] = c; fillCss[p.id] = css(mix(c, [255, 255, 255], 0.08));
+      trailCss[p.id] = css(mix(c, [255, 255, 255], 0.35), 0.85);
+      darkCss[p.id] = css(mix(c, [0, 0, 0], 0.38)); lineCss[p.id] = css(mix(c, [0, 0, 0], 0.22));
       avatarURLs[p.id] = Avatars.dataURL(p.avatar, 64, p.color);
+      p.blinkAt = performance.now() + 1000 + Math.random() * 3000;
     });
-    g.spawn(me, { x: Math.floor(g.N / 2), y: Math.floor(g.N / 2) });
+    g.spawn(me, { x: g.W / 2, y: g.W / 2 });
     for (var k = 1; k < g.players.length; k++) g.spawn(g.players[k]);
-    setupTerrain();
-    effects = []; camX = me.x + 0.5; camY = me.y + 0.5;
+    paths = [];
+    setupMinimap();
+    effects = []; camX = me.x; camY = me.y;
     $('hudAvatar').src = avatarURLs[me.id];
     $('feed').innerHTML = ''; lastBoardKey = '';
     $('minimap').classList.toggle('hidden', !S.mini);
     resize();
     show(null); $('hud').classList.remove('hidden');
-    joySetup();
+    joySetup(); keysHeld = {};
     state = 'play'; acc = 0; lastFrame = 0;
     updateHud(true);
     startLoop();
   }
   function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
 
-  function setupTerrain() {
-    var N = g.N;
-    terr = document.createElement('canvas'); terr.width = terr.height = N; terrCtx = terr.getContext('2d');
-    terrImg = terrCtx.createImageData(N, N); terrData = terrImg.data;
-    shadow = document.createElement('canvas'); shadow.width = shadow.height = N; shadowCtx = shadow.getContext('2d');
-    shadowImg = shadowCtx.createImageData(N, N); shadowData = shadowImg.data;
-    // רקע משבצות – נבנה פעם אחת
-    bg = document.createElement('canvas'); bg.width = bg.height = N;
-    var bctx = bg.getContext('2d'), bi = bctx.createImageData(N, N), bd = bi.data;
-    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
-      var o = (y * N + x) * 4, alt = (x + y) & 1;
-      bd[o] = alt ? 232 : 240; bd[o + 1] = alt ? 234 : 242; bd[o + 2] = alt ? 246 : 251; bd[o + 3] = 255;
-    }
-    bctx.putImageData(bi, 0, 0);
-    g.allDirty = true; flushTerrain();
+  // מפה קטנה: תמונה ברזולוציית הרשת, מתעדכנת רק בתאים שהשתנו
+  function setupMinimap() {
+    var G = g.G;
+    mm = document.createElement('canvas'); mm.width = mm.height = G; mmCtx = mm.getContext('2d');
+    mmImg = mmCtx.createImageData(G, G); mmData = mmImg.data;
+    for (var i = 0, n = G * G; i < n; i++) mmPaint(i);
+    mmCtx.putImageData(mmImg, 0, 0);
+    g.dirtyCells.length = 0;
   }
-  function paintCell(i) {
-    var o = i * 4, t = g.trail[i], w = g.owner[i], c;
-    if (t) { c = trailRgb[t]; terrData[o] = c[0]; terrData[o + 1] = c[1]; terrData[o + 2] = c[2]; terrData[o + 3] = 235; }
-    else if (w) { c = rgb[w]; terrData[o] = c[0]; terrData[o + 1] = c[1]; terrData[o + 2] = c[2]; terrData[o + 3] = 255; }
-    else terrData[o + 3] = 0;
-    if (w) { c = darkRgb[w]; shadowData[o] = c[0]; shadowData[o + 1] = c[1]; shadowData[o + 2] = c[2]; shadowData[o + 3] = 255; }
-    else shadowData[o + 3] = 0;
+  function mmPaint(i) {
+    var o = i * 4, w = g.owner[i];
+    if (w) { var c = rgb[w]; mmData[o] = c[0]; mmData[o + 1] = c[1]; mmData[o + 2] = c[2]; mmData[o + 3] = 255; }
+    else mmData[o + 3] = 0;
   }
-  // מעדכנים רק תאים שהשתנו
+
+  // עדכון צורות השטח – רק לשחקנים שהשטח שלהם השתנה
   function flushTerrain() {
-    if (g.allDirty) { for (var i = 0, n = g.N * g.N; i < n; i++) paintCell(i); g.allDirty = false; g.dirty.length = 0; }
-    else if (g.dirty.length) { for (var k = 0; k < g.dirty.length; k++) paintCell(g.dirty[k]); g.dirty.length = 0; }
-    else return;
-    terrCtx.putImageData(terrImg, 0, 0); shadowCtx.putImageData(shadowImg, 0, 0);
+    var changed = false;
+    for (var id = 1; id <= g.players.length; id++) {
+      if (!g.dirtyOwners[id]) continue;
+      g.dirtyOwners[id] = 0; changed = true;
+      paths[id] = g.counts[id] > 0 ? Terrain.toPath(Terrain.contours(g.owner, g.G, g.CELL, id)) : null;
+    }
+    if (g.dirtyCells.length) {
+      for (var k = 0; k < g.dirtyCells.length; k++) mmPaint(g.dirtyCells[k]);
+      g.dirtyCells.length = 0; mmDirty = true;
+    }
+    if (changed && g.dirtyBox) {
+      var b = g.dirtyBox, C = g.CELL;
+      // אזור מלוכלך ביחידות עולם (עם שוליים להחלקה, צל וקו מתאר)
+      var r = [b[0] * C - 2, b[1] * C - 2, (b[2] + 1) * C + 2, (b[3] + 1) * C + 2];
+      dirtyWorld = dirtyWorld ? [Math.min(dirtyWorld[0], r[0]), Math.min(dirtyWorld[1], r[1]), Math.max(dirtyWorld[2], r[2]), Math.max(dirtyWorld[3], r[3])] : r;
+    }
+    g.dirtyBox = null;
   }
 
   // ---------- לולאה ----------
@@ -171,7 +181,7 @@
     lastFrame = now;
     acc += dt;
     var ticks = 0;
-    while (acc >= TICK_MS && ticks < 4) { tick(); acc -= TICK_MS; ticks++; }
+    while (acc >= TICK_MS && ticks < 6) { tick(); acc -= TICK_MS; ticks++; }
     if (ticks) flushTerrain();
     render(Math.min(1, acc / TICK_MS), now);
     if (now - lastHud > 400) { lastHud = now; updateHud(false); }
@@ -179,6 +189,12 @@
 
   function tick() {
     var ps = g.players;
+    // מקלדת
+    if (me.alive) {
+      var vx = (keysHeld.ArrowRight ? 1 : 0) - (keysHeld.ArrowLeft ? 1 : 0), vy = (keysHeld.ArrowDown ? 1 : 0) - (keysHeld.ArrowUp ? 1 : 0);
+      if (vx || vy) me.target = Math.atan2(vy, vx);
+      me.turnInput = (keysHeld.KeyD ? 1 : 0) - (keysHeld.KeyA ? 1 : 0);
+    }
     for (var k = 0; k < ps.length; k++) if (ps[k].alive && ps[k].isBot) AI.think(g, ps[k], S.diff);
     g.step();
     for (var e = 0; e < g.events.length; e++) handleEvent(g.events[e]);
@@ -187,7 +203,7 @@
       var p = ps[k];
       if (!p.alive && p.isBot) {
         if (!p.respawnAt) p.respawnAt = g.tickNo + RESPAWN_TICKS;
-        else if (g.tickNo >= p.respawnAt) { if (g.spawn(p)) p.respawnAt = 0; else p.respawnAt = g.tickNo + 8; }
+        else if (g.tickNo >= p.respawnAt) { if (g.spawn(p)) p.respawnAt = 0; else p.respawnAt = g.tickNo + 10; }
       }
     }
   }
@@ -195,7 +211,7 @@
   function handleEvent(ev) {
     if (ev.type === 'death') {
       var v = ev.victim;
-      effects.push({ x: v.x + 0.5, y: v.y + 0.5, color: v.color, t0: performance.now() });
+      effects.push({ x: v.x, y: v.y, color: v.color, t0: performance.now() });
       if (v === me) { gameOver(ev); return; }
       if (ev.killer === me) feed('הבסת את ' + v.name + '! ⚔️');
       else if (ev.killer) feed(ev.killer.name + ' הביס את ' + v.name);
@@ -213,62 +229,107 @@
     DPR = Math.min(window.devicePixelRatio || 1, S.dpr || 2);
     W = window.innerWidth; H = window.innerHeight;
     canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
-    cellPx = Math.max(14, Math.min(W, H) / VIEW_CELLS) * DPR;
+    unitPx = Math.max(12, Math.min(W, H) / VIEW_UNITS) * DPR;
     Avatars.clear();
+    layer = null;
     if (state === 'paused' || state === 'over') render(1, performance.now());
   }
   window.addEventListener('resize', function () { if (g) resize(); });
 
   function lerp(a, b, t) { return a + (b - a) * t; }
 
+  /* שכבת רקע+שטח בגודל המסך + שוליים. מצוירת מחדש רק כשהמצלמה יוצאת מהשוליים
+     או כשהשטח משתנה (ואז רק באזור שהשתנה). */
+  function renderLayer(x0, y0, x1, y1) {
+    var c = layerCtx, N = g.W;
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    if (x0 != null) {
+      var sx = (x0 - layerX) * unitPx, sy = (y0 - layerY) * unitPx;
+      c.beginPath(); c.rect(Math.floor(sx), Math.floor(sy), Math.ceil((x1 - x0) * unitPx) + 2, Math.ceil((y1 - y0) * unitPx) + 2); c.clip();
+    }
+    c.fillStyle = '#2a2c45'; c.fillRect(0, 0, layer.width, layer.height);
+    c.setTransform(unitPx, 0, 0, unitPx, -layerX * unitPx, -layerY * unitPx);
+    c.fillStyle = '#eef0fa'; c.fillRect(0, 0, N, N);
+    // רשת עדינה כל 4 יחידות
+    var gx0 = Math.max(0, Math.floor(layerX / 4) * 4), gy0 = Math.max(0, Math.floor(layerY / 4) * 4);
+    var gx1 = Math.min(N, layerX + layer.width / unitPx), gy1 = Math.min(N, layerY + layer.height / unitPx);
+    c.strokeStyle = '#e1e4f3'; c.lineWidth = 0.08; c.beginPath();
+    for (var x = gx0; x <= gx1; x += 4) { c.moveTo(x, Math.max(0, layerY)); c.lineTo(x, gy1); }
+    for (var y = gy0; y <= gy1; y += 4) { c.moveTo(Math.max(0, layerX), y); c.lineTo(gx1, y); }
+    c.stroke();
+    var id;
+    // צל רך מתחת לכל שטח
+    c.translate(0, 0.28);
+    for (id = 1; id < paths.length; id++) if (paths[id]) { c.fillStyle = darkCss[id]; c.fill(paths[id], 'evenodd'); }
+    c.translate(0, -0.28);
+    c.lineJoin = 'round'; c.lineWidth = 0.14;
+    for (id = 1; id < paths.length; id++) if (paths[id]) {
+      c.fillStyle = fillCss[id]; c.fill(paths[id], 'evenodd');
+      c.strokeStyle = lineCss[id]; c.stroke(paths[id]);
+    }
+    // גבול המפה
+    c.strokeStyle = '#ff4d6d'; c.lineWidth = 0.25; c.strokeRect(0, 0, N, N);
+    c.restore();
+  }
+
+  var frames = 0;
   function render(alpha, now) {
     if (!g) return;
-    var N = g.N, cw = canvas.width, ch = canvas.height;
-    // מצלמה עוקבת אחרי השחקן (עם החלקה קלה)
-    if (me.alive) {
-      var tx = lerp(me.px, me.x, alpha) + 0.5, ty = lerp(me.py, me.y, alpha) + 0.5;
-      camX += (tx - camX) * 0.35; camY += (ty - camY) * 0.35;
+    frames++;
+    var cw = canvas.width, ch = canvas.height;
+    if (me.alive) { camX = lerp(me.px, me.x, alpha); camY = lerp(me.py, me.y, alpha); }
+    var vx0 = camX - cw / 2 / unitPx, vy0 = camY - ch / 2 / unitPx, vw = cw / unitPx, vh = ch / unitPx;
+    var margin = 8;
+    if (!layer || vx0 < layerX || vy0 < layerY || vx0 + vw > layerX + layer.width / unitPx || vy0 + vh > layerY + layer.height / unitPx) {
+      if (!layer) { layer = document.createElement('canvas'); layer.width = Math.ceil(cw + 2 * margin * unitPx); layer.height = Math.ceil(ch + 2 * margin * unitPx); layerCtx = layer.getContext('2d', { alpha: false }); }
+      layerX = vx0 - margin; layerY = vy0 - margin;
+      renderLayer(); dirtyWorld = null;
+    } else if (dirtyWorld) {
+      var d = dirtyWorld; dirtyWorld = null;
+      if (d[2] > layerX && d[3] > layerY && d[0] < layerX + layer.width / unitPx && d[1] < layerY + layer.height / unitPx) renderLayer(d[0], d[1], d[2], d[3]);
     }
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#2a2c45'; ctx.fillRect(0, 0, cw, ch);
-    var ox = cw / 2 - camX * cellPx, oy = ch / 2 - camY * cellPx;
-    // תחום תאים נראה
-    var x0 = Math.max(0, Math.floor(-ox / cellPx) - 1), y0 = Math.max(0, Math.floor(-oy / cellPx) - 1);
-    var x1 = Math.min(N, Math.ceil((cw - ox) / cellPx) + 1), y1 = Math.min(N, Math.ceil((ch - oy) / cellPx) + 1);
-    if (x1 > x0 && y1 > y0) {
-      var sw = x1 - x0, sh = y1 - y0, dx = ox + x0 * cellPx, dy = oy + y0 * cellPx;
-      ctx.drawImage(bg, x0, y0, sw, sh, dx, dy, sw * cellPx, sh * cellPx);
-      var sOff = Math.round(cellPx * 0.22);
-      ctx.drawImage(shadow, x0, y0, sw, sh, dx, dy + sOff, sw * cellPx, sh * cellPx);
-      ctx.drawImage(terr, x0, y0, sw, sh, dx, dy, sw * cellPx, sh * cellPx);
-    }
-    // מסגרת המפה
-    ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = Math.max(2, cellPx * 0.15);
-    ctx.strokeRect(ox, oy, N * cellPx, N * cellPx);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(layer, Math.round((layerX - vx0) * unitPx), Math.round((layerY - vy0) * unitPx));
 
-    // ראשים (דמויות) – מודבקות מקנבס מוכן לפי כיוון
-    var avSize = Math.round(cellPx * 2.0);
-    var fontPx = Math.round(Math.max(11 * DPR, cellPx * 0.5));
+    // שובלים – קווים מעוגלים
+    ctx.setTransform(unitPx, 0, 0, unitPx, -vx0 * unitPx, -vy0 * unitPx);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = 0.8;
+    var ps = g.players, k, p;
+    for (k = 0; k < ps.length; k++) {
+      p = ps[k];
+      if (!p.alive || !p.trail.length) continue;
+      var t = p.trail;
+      ctx.strokeStyle = trailCss[p.id]; ctx.beginPath(); ctx.moveTo(t[0], t[1]);
+      for (var i = 2; i < t.length; i += 2) ctx.lineTo(t[i], t[i + 1]);
+      ctx.lineTo(lerp(p.px, p.x, alpha), lerp(p.py, p.y, alpha));
+      ctx.stroke();
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // דמויות
+    var size = Math.round(unitPx * 1.9);
+    var fontPx = Math.round(Math.max(11 * DPR, unitPx * 0.5));
     ctx.font = '700 ' + fontPx + 'px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.imageSmoothingEnabled = true;
-    for (var k = 0; k < g.players.length; k++) {
-      var p = g.players[k];
+    for (k = 0; k < ps.length; k++) {
+      p = ps[k];
       if (!p.alive) continue;
-      var hx = ox + (lerp(p.px, p.x, alpha) + 0.5) * cellPx, hy = oy + (lerp(p.py, p.y, alpha) + 0.5) * cellPx;
-      if (hx < -avSize || hy < -avSize || hx > cw + avSize || hy > ch + avSize) continue;
-      var img = Avatars.get(p.avatar, p.dir, avSize, p.color);
-      ctx.drawImage(img, hx - avSize / 2, hy - avSize / 2);
-      ctx.lineWidth = Math.max(2, fontPx * 0.25); ctx.strokeStyle = 'rgba(0,0,0,.55)';
-      ctx.strokeText(p.name, hx, hy - avSize * 0.5);
-      ctx.fillStyle = '#fff'; ctx.fillText(p.name, hx, hy - avSize * 0.5);
+      var hx = (lerp(p.px, p.x, alpha) - vx0) * unitPx, hy = (lerp(p.py, p.y, alpha) - vy0) * unitPx;
+      if (hx < -size * 2 || hy < -size * 2 || hx > cw + size * 2 || hy > ch + size * 2) continue;
+      var head = p.ph + Game.angDiff(p.h, p.ph) * alpha;
+      var blink = 0;
+      if (now > p.blinkAt) { var bt = (now - p.blinkAt) / 140; if (bt >= 1) p.blinkAt = now + 2000 + Math.random() * 3500; else blink = Math.sin(bt * Math.PI); }
+      Avatars.draw(ctx, p.avatar, p.color, hx, hy, size, head, 1, blink);
+      ctx.lineWidth = Math.max(2, fontPx * 0.25); ctx.strokeStyle = 'rgba(0,0,0,.5)';
+      ctx.strokeText(p.name, hx, hy - size * 0.62);
+      ctx.fillStyle = '#fff'; ctx.fillText(p.name, hx, hy - size * 0.62);
     }
     // אפקט פסילה
     for (var e = effects.length - 1; e >= 0; e--) {
       var f = effects[e], age = (now - f.t0) / 600;
       if (age >= 1) { effects.splice(e, 1); continue; }
-      var ex = ox + f.x * cellPx, ey = oy + f.y * cellPx;
-      ctx.globalAlpha = 1 - age; ctx.strokeStyle = f.color; ctx.lineWidth = cellPx * 0.3;
-      ctx.beginPath(); ctx.arc(ex, ey, cellPx * (0.5 + age * 2.5), 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1 - age; ctx.strokeStyle = f.color; ctx.lineWidth = unitPx * 0.3;
+      ctx.beginPath(); ctx.arc((f.x - vx0) * unitPx, (f.y - vy0) * unitPx, unitPx * (0.6 + age * 3), 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 1;
     }
   }
@@ -277,24 +338,23 @@
     if (!g) return;
     $('pct').textContent = g.pct(me).toFixed(1) + '%';
     $('kills').textContent = '⚔️ ' + me.kills;
-    // טבלת מובילים
     var list = g.players.filter(function (p) { return p.alive; }).sort(function (a, b) { return g.counts[b.id] - g.counts[a.id]; }).slice(0, 5);
     if (me.alive && list.indexOf(me) < 0) list.push(me);
     var key = list.map(function (p) { return p.id + ':' + g.pct(p).toFixed(1); }).join(',');
     if (key !== lastBoardKey || force) {
       lastBoardKey = key;
       var html = '';
-      list.forEach(function (p, i) {
+      list.forEach(function (p) {
         html += '<li class="' + (p === me ? 'me' : '') + '"><img src="' + avatarURLs[p.id] + '" alt="">' + esc(p.name) + '<span class="p">' + g.pct(p).toFixed(1) + '%</span></li>';
       });
       $('board').innerHTML = html;
     }
-    // מפה קטנה – מתעדכנת רק כמה פעמים בשנייה
     if (S.mini) {
+      if (mmDirty) { mmCtx.putImageData(mmImg, 0, 0); mmDirty = false; }
       var mw = mini.width;
-      mctx.clearRect(0, 0, mw, mw); mctx.imageSmoothingEnabled = false;
-      mctx.drawImage(terr, 0, 0, mw, mw);
-      if (me.alive) { mctx.fillStyle = '#fff'; mctx.fillRect(me.x / g.N * mw - 2, me.y / g.N * mw - 2, 5, 5); }
+      mctx.clearRect(0, 0, mw, mw); mctx.imageSmoothingEnabled = true;
+      mctx.drawImage(mm, 0, 0, mw, mw);
+      if (me.alive) { mctx.fillStyle = '#fff'; mctx.beginPath(); mctx.arc(me.x / g.W * mw, me.y / g.W * mw, 3, 0, 7); mctx.fill(); }
     }
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -348,19 +408,21 @@
   window.addEventListener('pagehide', function () { if (state === 'play') pause(); });
 
   // ---------- קלט ----------
-  var KEYS = { ArrowRight: 0, KeyD: 0, ArrowDown: 1, KeyS: 1, ArrowLeft: 2, KeyA: 2, ArrowUp: 3, KeyW: 3 };
+  // חיצים: כיוון מוחלט (כולל אלכסונים, 8 כיוונים); A/D: סיבוב שמאלה/ימינה כל עוד לוחצים
+  var HOLD = { ArrowRight: 1, ArrowLeft: 1, ArrowUp: 1, ArrowDown: 1, KeyA: 1, KeyD: 1 };
   window.addEventListener('keydown', function (e) {
     if (e.target && e.target.tagName === 'INPUT') { if (e.key === 'Enter' && state === 'menu') startGame(); return; }
     if (e.code === 'KeyP' || e.key === 'Escape') { if (state === 'play') pause(); else if (state === 'paused') resume(); e.preventDefault(); return; }
     if (e.key === 'Enter' && (state === 'menu' || state === 'over')) { startGame(); return; }
-    var d = KEYS[e.code]; if (d === undefined) d = KEYS[e.key];
-    if (d !== undefined && state === 'play' && me) { g.turn(me, d); e.preventDefault(); }
+    var c = HOLD[e.code] ? e.code : (HOLD[e.key] ? e.key : null);
+    if (c && state === 'play') { keysHeld[c] = true; e.preventDefault(); }
   });
+  window.addEventListener('keyup', function (e) { delete keysHeld[e.code]; delete keysHeld[e.key]; });
+  window.addEventListener('blur', function () { keysHeld = {}; });
 
-  // החלקה / ג'ויסטיק
+  // גרירה (כיוון האצבע) / ג'ויסטיק אנלוגי
   var touchId = null, sx = 0, sy = 0, joyBase = $('joyBase'), joyKnob = $('joyKnob');
-  var SWIPE = 22, JOY_R = 50, JOY_DEAD = 14;
-  function dirFrom(dx, dy) { return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3); }
+  var DRAG_MIN = 10, DRAG_LEASH = 55, JOY_R = 50, JOY_DEAD = 10;
   function joyRest() {
     joyBase.style.left = (W - 95) + 'px'; joyBase.style.top = (H - 110) + 'px';
     joyKnob.style.transform = '';
@@ -372,14 +434,16 @@
     if (S.joy) { joyBase.style.left = sx + 'px'; joyBase.style.top = sy + 'px'; joyKnob.style.transform = ''; }
   });
   canvas.addEventListener('pointermove', function (e) {
-    if (e.pointerId !== touchId || state !== 'play') return;
+    if (e.pointerId !== touchId || state !== 'play' || !me.alive) return;
     var dx = e.clientX - sx, dy = e.clientY - sy, dist = Math.hypot(dx, dy);
     if (S.joy) {
       var k = dist > JOY_R ? JOY_R / dist : 1;
       joyKnob.style.transform = 'translate(' + (dx * k) + 'px,' + (dy * k) + 'px)';
-      if (dist > JOY_DEAD) g.turn(me, dirFrom(dx, dy));
-    } else if (dist > SWIPE) {
-      g.turn(me, dirFrom(dx, dy)); sx = e.clientX; sy = e.clientY;   // אפשר להמשיך להחליק ולפנות שוב
+      if (dist > JOY_DEAD) me.target = Math.atan2(dy, dx);
+    } else if (dist > DRAG_MIN) {
+      me.target = Math.atan2(dy, dx);
+      // נקודת העוגן נגררת אחרי האצבע, כך שהכיוון תמיד לפי התנועה האחרונה
+      if (dist > DRAG_LEASH) { sx = e.clientX - dx / dist * DRAG_LEASH; sy = e.clientY - dy / dist * DRAG_LEASH; }
     }
   });
   function endTouch(e) { if (e.pointerId !== touchId) return; touchId = null; if (S.joy) joyRest(); }
@@ -392,5 +456,5 @@
   }
 
   // חשיפה לבדיקות אוטומטיות בלבד
-  window.__kovesh = { get game() { return g; }, get me() { return me; }, get state() { return state; }, start: startGame, pause: pause };
+  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, start: startGame, pause: pause };
 })();

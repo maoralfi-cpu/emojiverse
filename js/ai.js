@@ -1,138 +1,107 @@
-/* כובש – בינה מלאכותית פשוטה לבוטים. נכתב מאפס. */
+/* כובש – בינה מלאכותית לבוטים בתנועה רציפה. נכתב מאפס.
+   גיחה: יציאה בקו, קשת סיבוב, חזרה הביתה; בריחה כשאויב קרוב; ציד שובלים; בדיקת בטיחות קדימה. */
 (function (root) {
   'use strict';
   var Game = root.Game || (typeof require !== 'undefined' ? require('./game.js') : null);
-  var DX = Game.DX, DY = Game.DY;
+  var TAU = Math.PI * 2, angDiff = Game.angDiff;
 
   var LEVELS = {
-    easy:   { maxOut: 7,  maxTrail: 22, danger: 4, hunt: 0.0,  huntR: 0,  smart: false, randTurn: 0.08 },
-    normal: { maxOut: 11, maxTrail: 34, danger: 6, hunt: 0.35, huntR: 9,  smart: true,  randTurn: 0.05 },
-    hard:   { maxOut: 15, maxTrail: 48, danger: 8, hunt: 0.7,  huntR: 14, smart: true,  randTurn: 0.03 }
+    easy:   { outMin: 6,  outMax: 14, maxPts: 70,  danger: 6,  hunt: 0.0,  huntR: 0,  arc: 0.32, probe: 3.0 },
+    normal: { outMin: 8,  outMax: 22, maxPts: 110, danger: 8,  hunt: 0.3,  huntR: 10, arc: 0.36, probe: 3.5 },
+    hard:   { outMin: 10, outMax: 30, maxPts: 150, danger: 10, hunt: 0.6,  huntR: 15, arc: 0.4,  probe: 4.0 }
   };
+  var OFFS = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.5, -1.5, 2.0, -2.0, 2.6, -2.6, 3.1];
 
-  function ri(g, a, b) { return a + Math.floor(g.rand() * (b - a + 1)); }
-
-  function safe(g, p, d) {
-    var x = p.x + DX[d], y = p.y + DY[d];
-    if (!g.inBounds(x, y)) return false;
-    return g.trail[g.idx(x, y)] !== p.id;
+  function dangerAt(g, p, x, y) {
+    var m = 0.8;
+    if (x < m || y < m || x > g.W - m || y > g.W - m) return true;
+    return g.trailDist2(p, x, y, 3, false) < 1.1 * 1.1;
   }
-
-  function nearestEnemy(g, p) {
-    var best = 1e9, who = null;
+  function safeHeading(g, p, a, probe) {
+    var c = Math.cos(a), s = Math.sin(a);
+    for (var d = 0.8; d <= probe; d += 0.8) if (dangerAt(g, p, p.x + c * d, p.y + s * d)) return false;
+    return true;
+  }
+  function enemyDist(g, p) {
+    var best = Infinity, t = p.trail;
     for (var k = 0; k < g.players.length; k++) {
       var q = g.players[k];
       if (!q.alive || q === p) continue;
-      // המרחק של האויב מהשובל שלי (בדיקה מדגמית) ומהראש שלי
-      var d = Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
-      var tc = p.trailCells;
-      for (var t = 0; t < tc.length; t += 3) {
-        var cx = tc[t] % g.N, cy = (tc[t] - cx) / g.N;
-        var dd = Math.abs(q.x - cx) + Math.abs(q.y - cy);
-        if (dd < d) d = dd;
-      }
-      if (d < best) { best = d; who = q; }
+      var d = Math.hypot(q.x - p.x, q.y - p.y);
+      for (var i = 0; i < t.length; i += 8) { var dd = Math.hypot(q.x - t[i], q.y - t[i + 1]); if (dd < d) d = dd; }
+      if (d < best) best = d;
     }
-    return { d: best, who: who };
+    return best;
   }
 
   function think(g, p, level) {
     var L = LEVELS[level] || LEVELS.normal;
-    var ai = p.ai || (p.ai = { mode: 'home', legs: [], legStep: 0, target: -1, homeSteps: 0 });
-    var N = g.N, here = g.idx(p.x, p.y), atHome = g.owner[here] === p.id;
-    var want = -1;
+    var ai = p.ai || (p.ai = { mode: 'home', t: 0, exitH: g.rand() * TAU, turned: 0, dir: 1, goal: null, goalT: 0, homeT: 0 });
+    var home = g.ownerAt(p.x, p.y) === p.id, out = p.trail.length > 0, want = p.h;
+    ai.t++;
 
-    if (atHome && p.trailCells.length === 0 && ai.mode !== 'home' && ai.mode !== 'hunt') {
-      ai.mode = 'home'; ai.legs = []; ai.homeSteps = 0;
-    }
+    if (!out && home && ai.mode !== 'home' && ai.mode !== 'hunt') { ai.mode = 'home'; ai.homeT = 0; ai.exitH = p.h + (g.rand() - 0.5) * 2.4; }
 
-    // ציד: שובל של שחקן אחר קרוב
-    if (L.hunt > 0 && ai.mode !== 'return' && p.trailCells.length < 8) {
-      if (ai.mode !== 'hunt' && g.tickNo % 4 === p.id % 4 && g.rand() < L.hunt) {
-        var best = 1e9, tgt = -1;
-        for (var k = 0; k < g.players.length; k++) {
-          var q = g.players[k];
-          if (!q.alive || q === p || !q.trailCells.length) continue;
-          var tc = q.trailCells;
-          for (var t = 0; t < tc.length; t += 2) {
-            var cx = tc[t] % N, cy = (tc[t] - cx) / N;
-            var d = Math.abs(cx - p.x) + Math.abs(cy - p.y) - (q.isBot ? 0 : 2);
-            if (d < best) { best = d; tgt = tc[t]; }
-          }
+    // ציד
+    if (L.hunt > 0 && ai.mode !== 'return' && p.trail.length < 16 && ai.mode !== 'hunt' && g.tickNo % 6 === p.id % 6 && g.rand() < L.hunt) {
+      var bd = Infinity, tx = 0, ty = 0;
+      for (var k = 0; k < g.players.length; k++) {
+        var q = g.players[k];
+        if (!q.alive || q === p || q.trail.length < 6) continue;
+        var tr = q.trail;
+        for (var i = 0; i < tr.length; i += 4) {
+          var d = Math.hypot(tr[i] - p.x, tr[i + 1] - p.y) - (q.isBot ? 0 : 2);
+          if (d < bd) { bd = d; tx = tr[i]; ty = tr[i + 1]; }
         }
-        if (tgt >= 0 && best <= L.huntR) { ai.mode = 'hunt'; ai.target = tgt; ai.huntTicks = 0; }
       }
+      if (bd <= L.huntR) { ai.mode = 'hunt'; ai.goal = { x: tx, y: ty }; ai.huntT = 0; }
     }
 
     if (ai.mode === 'hunt') {
-      ai.huntTicks++;
-      if (!g.trail[ai.target] || g.trail[ai.target] === p.id || p.trailCells.length > L.maxTrail / 2 || ai.huntTicks > 30) {
-        ai.mode = p.trailCells.length ? 'return' : 'home';
-      } else {
-        var T = ai.target;
-        want = g.bfsFirstStep(p, function (c) { return c === T; }, 1500);
-        if (want < 0) ai.mode = 'return';
-      }
+      ai.huntT++;
+      if (ai.huntT > 60 || p.trail.length > L.maxPts / 2) ai.mode = out ? 'return' : 'home';
+      else want = Math.atan2(ai.goal.y - p.y, ai.goal.x - p.x);
     }
 
     if (ai.mode === 'home') {
-      // מסתובבים בשטח הבית ויוצאים לגיחה
-      ai.homeSteps++;
-      if (!atHome) {
-        // יצאנו – מתכננים מלבן
-        var s = g.rand() < 0.5 ? 1 : 3; // ימינה/שמאלה
-        var a = ri(g, 2, L.maxOut), b = ri(g, 2, L.maxOut);
-        var d1 = (p.dir + s) % 4, d2 = (p.dir + 2 * s) % 4;
-        ai.legs = [[p.dir, a], [d1, b], [d2, a + ri(g, 0, 3)]];
-        ai.legStep = 0; ai.mode = 'out';
+      ai.homeT++;
+      if (out) {
+        // יצאנו מהשטח – מתכננים גיחה
+        ai.mode = 'out'; ai.t = 0; ai.exitH = p.h; ai.turned = 0; ai.dir = g.rand() < 0.5 ? 1 : -1;
+        ai.straight = Math.round((L.outMin + g.rand() * (L.outMax - L.outMin)) / (g.SPEED * g.DT) * 0.5);
+        ai.arcTotal = Math.PI * (0.85 + g.rand() * 0.4);
       } else {
-        want = p.dir;
-        if (g.rand() < L.randTurn * 2 || !safe(g, p, want)) want = (p.dir + (g.rand() < 0.5 ? 1 : 3)) % 4;
+        if (ai.homeT % 25 === 0) ai.exitH += (g.rand() - 0.5) * 1.5;
+        want = ai.exitH;
       }
     }
 
     if (ai.mode === 'out') {
-      var e = nearestEnemy(g, p);
-      if (p.trailCells.length >= L.maxTrail || (e.d <= L.danger && p.trailCells.length > 2)) ai.mode = 'return';
-      else if (!ai.legs.length) ai.mode = 'return';
+      if (p.trail.length / 2 > L.maxPts || enemyDist(g, p) < L.danger && p.trail.length > 8) ai.mode = 'return';
+      else if (ai.t < ai.straight) want = ai.exitH + Math.sin(ai.t * 0.15) * 0.15;
       else {
-        var leg = ai.legs[0];
-        want = leg[0];
-        ai.legStep++;
-        if (ai.legStep >= leg[1]) { ai.legs.shift(); ai.legStep = 0; }
-        if (atHome && p.trailCells.length === 0) ai.mode = 'home';
+        var r = g.TURN * g.DT * L.arc * ai.dir;
+        want = p.h + r; ai.turned += Math.abs(r);
+        if (ai.turned >= ai.arcTotal) { ai.mode = 'return'; ai.goalT = 0; }
       }
     }
 
     if (ai.mode === 'return') {
-      if (!p.trailCells.length && atHome) { ai.mode = 'home'; want = p.dir; }
+      if (!out) { ai.mode = 'home'; ai.homeT = 0; }
       else {
-        var id = p.id;
-        want = g.bfsFirstStep(p, function (c) { return g.owner[c] === id; }, 6000);
+        if (!ai.goal || ai.goalT-- <= 0) { ai.goal = g.nearestOwn(p, 160) || { x: p.homeX, y: p.homeY }; ai.goalT = 5; }
+        want = Math.atan2(ai.goal.y - p.y, ai.goal.x - p.x);
       }
     }
 
-    if (g.rand() < L.randTurn * 0.3 && ai.mode === 'out') want = (p.dir + (g.rand() < 0.5 ? 1 : 3)) % 4;
-
-    // סינון בטיחות: לא לאחור, לא לקיר, לא לשובל של עצמי, ולא למבוי סתום
-    if (want < 0 || want === (p.dir + 2) % 4) want = p.dir;
-    var limit = L.smart ? 60 : 12;
-    function ok(d) {
-      if (d === (p.dir + 2) % 4 || !safe(g, p, d)) return false;
-      return g.space(p, p.x + DX[d], p.y + DY[d], limit) >= Math.min(limit, p.trailCells.length + 4);
+    // בדיקת בטיחות: הכיוון הקרוב לרצוי שאינו מוביל לקיר או לשובל העצמי
+    var chosen = want;
+    for (var o = 0; o < OFFS.length; o++) {
+      var a = want + OFFS[o];
+      if (safeHeading(g, p, a, L.probe)) { chosen = a; break; }
     }
-    if (!ok(want)) {
-      var opts = [p.dir, (p.dir + 1) % 4, (p.dir + 3) % 4], bestD = -1, bestS = -1;
-      for (var o = 0; o < 3; o++) {
-        var dd2 = opts[o];
-        if (dd2 === (p.dir + 2) % 4 || !safe(g, p, dd2)) continue;
-        var sp = g.space(p, p.x + DX[dd2], p.y + DY[dd2], 200);
-        if (sp > bestS) { bestS = sp; bestD = dd2; }
-      }
-      if (bestD >= 0) want = bestD;
-      if (ai.mode === 'out') ai.mode = 'return';
-    }
-    if (want !== p.dir) g.turn(p, want);
+    if (o > 2 && ai.mode === 'out') ai.mode = 'return';
+    p.target = chosen;
   }
 
   var AI = { think: think, LEVELS: LEVELS };

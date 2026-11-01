@@ -1,159 +1,164 @@
-// בדיקות לוגיקה: node test/logic.test.js
+// בדיקות לוגיקה לתנועה רציפה: node test/logic.test.js
 const Game = require('../js/game.js');
 const AI = require('../js/ai.js');
 let pass = 0, fail = 0;
 function ok(c, m) { if (c) { pass++; console.log('  ✓', m); } else { fail++; console.log('  ✗', m); } }
 function seeded(s) { return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
-function drive(g, p, path) { for (const d of path) { if (d !== p.dir) g.turn(p, d); g.step(); } }
-const R = 0, D = 1, L = 2, U = 3;
+const R = 0, D = Math.PI / 2, L = Math.PI, U = -Math.PI / 2;
+// נהיגה בכיוון קבוע (מכוון גם את הכיוון בפועל, כדי לצייר צורות מדויקות)
+function go(g, p, ang, dist) { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && p.alive; i++) { p.h = p.target = ang; g.step(); } }
+const own = (g, p, x, y) => g.ownerAt(x, y) === p.id;
 
-// מימוש ייחוס נאיבי: מילוי מכל גבול המפה על פני תאים שאינם של השחקן
-function reference(g, id) {
-  const N = g.N, seen = new Uint8Array(N * N), st = [];
-  for (let i = 0; i < N; i++) for (const [x, y] of [[i,0],[i,N-1],[0,i],[N-1,i]]) { const k = y*N+x; if (g.owner[k] !== id && !seen[k]) { seen[k] = 1; st.push(k); } }
-  while (st.length) { const c = st.pop(), x = c % N, y = (c - x) / N;
-    for (const [nx, ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]) { if (nx<0||ny<0||nx>=N||ny>=N) continue; const k = ny*N+nx; if (!seen[k] && g.owner[k] !== id) { seen[k]=1; st.push(k); } } }
-  const out = new Uint8Array(N * N); for (let k = 0; k < N*N; k++) out[k] = (g.owner[k] === id || !seen[k]) ? 1 : 0; return out;
+console.log('כיבוש לולאה מלבנית (קו שבור)');
+{
+  const g = new Game({ size: 60, rand: seeded(1) });
+  const p = g.addPlayer({}); g.spawn(p, { x: 20, y: 20 });
+  const a0 = g.counts[p.id];
+  ok(Math.abs(a0 * 0.25 - Math.PI * 3.2 * 3.2) < 3, 'שטח התחלתי עגול ≈ πr² (' + (a0 * 0.25).toFixed(1) + ')');
+  go(g, p, R, 12); ok(p.trail.length > 10, 'מחוץ לשטח נוצר שובל של נקודות');
+  go(g, p, D, 10); go(g, p, L, 12);
+  go(g, p, U, 7);
+  ok(p.alive && p.trail.length === 0, 'חזר לשטח, השובל נסגר');
+  ok(own(g, p, 26, 25) && own(g, p, 30, 27) && own(g, p, 22, 28), 'פנים הלולאה נכבש');
+  ok(!own(g, p, 36, 25) && !own(g, p, 26, 33) && !own(g, p, 26, 15), 'מחוץ ללולאה לא נכבש');
+  const area = g.counts[p.id] * 0.25;
+  ok(area > 110 && area < 175, 'שטח כולל סביר (' + area.toFixed(1) + ' יח"ר)');
 }
 
-console.log('כיבוש לולאה פשוטה');
+console.log('כיבוש לולאה מעוקלת (סיבוב רציף)');
 {
-  const g = new Game({ size: 30, rand: seeded(1) });
-  const p = g.addPlayer({ name: 'me' });
-  g.spawn(p, { x: 10, y: 10 }); p.dir = R; // שטח 8..12
-  ok(g.counts[p.id] === 25, 'שטח התחלתי 25 תאים');
-  drive(g, p, [R,R,R,R,R, D,D,D,D,D,D, L,L,L,L,L, U,U,U,U]);
-  ok(p.alive, 'שחקן חי');
-  ok(p.trailCells.length === 0, 'השובל התרוקן אחרי חזרה');
-  let all = true; for (let y = 11; y <= 15; y++) for (let x = 11; x <= 14; x++) if (g.owner[g.idx(x,y)] !== p.id) all = false;
-  ok(all, 'פנים הלולאה נכבש');
-  ok(g.counts[p.id] === 58, 'ספירת תאים = 58 (' + g.counts[p.id] + ')');
-  ok(g.owner[g.idx(9, 14)] === 0 && g.owner[g.idx(14, 9)] === 0 && g.owner[g.idx(16, 12)] === 0, 'תאים מחוץ ללולאה לא נכבשו');
+  const g = new Game({ size: 60, rand: seeded(2) });
+  const p = g.addPlayer({}); g.spawn(p, { x: 30, y: 30 });
+  p.h = p.target = R;
+  go(g, p, R, 6);
+  // קשת רכה של ~180° ואז היגוי חופשי חזרה הביתה
+  for (let i = 0; i < 46; i++) { p.target = p.h + 0.07; g.step(); }
+  let n = 0; while (p.alive && p.trail.length && n++ < 400) { p.target = Math.atan2(30 - p.y, 30 - p.x); g.step(); }
+  ok(p.alive && p.trail.length === 0, 'הקשת נסגרה וחזר');
+  ok(g.counts[p.id] * 0.25 > Math.PI * 3.2 * 3.2 + 20, 'השטח גדל (' + (g.counts[p.id] * 0.25).toFixed(1) + ')');
 }
 
-console.log('כיבוש לאורך קיר המפה');
+console.log('פגיעה בשובל של יריב (מרחק נקודה-מקטע)');
 {
-  const g = new Game({ size: 20, rand: seeded(2) });
-  const p = g.addPlayer({});
-  g.spawn(p, { x: 3, y: 3 }); p.dir = U; // 1..5
-  drive(g, p, [U,U,U, R,R,R,R,R,R, D,D,D, L,L,L,L]);
-  ok(p.alive && p.trailCells.length === 0, 'חי וחזר');
-  ok(g.owner[g.idx(8, 0)] === p.id && g.owner[g.idx(7, 1)] === p.id && g.owner[g.idx(9,3)] === p.id, 'השטח לאורך הקיר נכבש');
-  ok(g.owner[g.idx(10, 2)] === 0 && g.owner[g.idx(7, 4)] === 0, 'לא נכבש מעבר');
-}
-
-console.log('בור פנימי (חור בתוך השטח) נכבש');
-{
-  const g = new Game({ size: 30, rand: seeded(3) });
-  const p = g.addPlayer({}); g.spawn(p, { x: 15, y: 15 });
-  const q = g.addPlayer({}); g.spawn(q, { x: 5, y: 5 });
-  for (let y = 12; y <= 18; y++) for (let x = 12; x <= 18; x++) g.setOwner(g.idx(x,y), p.id);
-  g.setOwner(g.idx(15,15), q.id);
-  p.x = 18; p.y = 15; p.dir = R;
-  drive(g, p, [R, D, L]);
-  ok(g.owner[g.idx(15,15)] === p.id, 'תא כלוא של יריב נכבש');
-}
-
-console.log('התנגשות בשובל');
-{
-  const g = new Game({ size: 40, rand: seeded(4) });
+  const g = new Game({ size: 60, rand: seeded(3) });
   const a = g.addPlayer({}), b = g.addPlayer({});
-  g.spawn(a, { x: 10, y: 10 }); g.spawn(b, { x: 15, y: 25 });
-  a.dir = R; drive(g, a, [R,R,R,R]); // b זז למעלה במקביל
-  ok(a.alive && a.trailCells.length === 2, 'a בחוץ עם שובל 2');
-  b.x = 13; b.y = 12; b.dir = U; b.trailCells.length = 0;
-  for (let i = 0; i < g.trail.length; i++) if (g.trail[i] === b.id) g.trail[i] = 0;
-  g.turn(a, D); g.step(); g.step();
-  ok(!a.alive, 'a מת כש-b חצה את השובל שלו');
+  g.spawn(a, { x: 10, y: 20 }); g.spawn(b, { x: 40, y: 45 });
+  go(g, a, R, 10); // a בחוץ, שובל אופקי ב-y=20 עד x≈20
+  ok(a.alive && a.trail.length > 6, 'a בחוץ עם שובל');
+  b.x = 16; b.y = 24; b.trail = []; b.h = b.target = U; // b חוצה את השובל של a
+  for (let i = 0; i < 20 && a.alive; i++) { a.h = a.target = D; b.h = b.target = U; g.step(); }
+  ok(!a.alive, 'a נפסל כש-b חצה את השובל');
   ok(b.alive && b.kills === 1, 'b קיבל הריגה');
-  ok(g.counts[a.id] === 0, 'שטח של a נמחק');
-  let t = 0; for (let i = 0; i < g.trail.length; i++) if (g.trail[i] === a.id) t++;
-  ok(t === 0, 'השובל של a נמחק');
+  ok(g.counts[a.id] === 0, 'השטח של a נמחק');
 }
 
-console.log('חציית שובל עצמי');
+console.log('התקרבות לשובל בלי לגעת');
 {
-  const g = new Game({ size: 30, rand: seeded(5) });
-  const p = g.addPlayer({}); g.spawn(p, { x: 5, y: 5 }); p.dir = R;
-  drive(g, p, [R,R,R,R,R,R, D,D, L,L, U,U]);
-  ok(!p.alive, 'מת כשנגע בשובל של עצמו');
+  const g = new Game({ size: 60, rand: seeded(4) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 10, y: 20 }); g.spawn(b, { x: 40, y: 45 });
+  go(g, a, R, 10);
+  b.x = 30; b.y = 21.2; b.trail = []; b.h = b.target = L; // נוסע במקביל, 1.2 יחידות מהשובל
+  for (let i = 0; i < 25; i++) { a.h = a.target = R; b.h = b.target = L; g.step(); }
+  ok(a.alive, 'מרחק 1.2 > רדיוס פגיעה – אין פסילה');
+}
+
+console.log('שובל עצמי');
+{
+  const g = new Game({ size: 60, rand: seeded(5) });
+  const p = g.addPlayer({}); g.spawn(p, { x: 10, y: 30 });
+  go(g, p, R, 8);
+  let n = 0; while (p.alive && n++ < 200) { p.target = p.h + 1; g.step(); } // מעגל צר מחוץ לשטח
+  ok(!p.alive, 'מעגל מלא מחוץ לשטח – נפסל בשובל של עצמו');
+  const g2 = new Game({ size: 60, rand: seeded(6) });
+  const q = g2.addPlayer({}); g2.spawn(q, { x: 10, y: 30 });
+  go(g2, q, R, 8);
+  for (let i = 0; i < 14; i++) { q.target = q.h + 1; g2.step(); } // פנייה חדה של ~180°
+  go(g2, q, q.h, 2);
+  ok(q.alive, 'פניית פרסה חדה לא נחשבת פגיעה עצמית');
 }
 
 console.log('קיר');
 {
-  const g = new Game({ size: 20, rand: seeded(6) });
-  const p = g.addPlayer({}); g.spawn(p, { x: 3, y: 3 }); p.dir = L;
-  drive(g, p, [L,L,L,L]);
-  ok(!p.alive, 'מת ביציאה מהמפה');
+  const g = new Game({ size: 40, rand: seeded(7) });
+  const p = g.addPlayer({}); g.spawn(p, { x: 6, y: 20 });
+  go(g, p, L, 10);
+  ok(!p.alive, 'נפסל ביציאה מהמפה');
 }
 
 console.log('ראש בראש');
 {
-  const g = new Game({ size: 40, rand: seeded(7) });
+  const g = new Game({ size: 80, rand: seeded(8) });
   const a = g.addPlayer({}), b = g.addPlayer({});
-  g.spawn(a, { x: 5, y: 20 }); g.spawn(b, { x: 34, y: 20 });
-  a.dir = R; b.dir = L;
-  g.step(); // תיקו בשטחים
-  a.x = 14; b.x = 20; // מזייפים שובלים: a ארוך יותר
-  a.trailCells = [1,2,3,4]; b.trailCells = [5,6];
-  g.step(); g.step(); g.step(); // a:17 b:17
-  ok(!a.alive && b.alive, 'בעל השובל הארוך מת בהתנגשות ראש בראש');
-  const g2 = new Game({ size: 40, rand: seeded(8) });
+  g.spawn(a, { x: 10, y: 40 }); g.spawn(b, { x: 70, y: 40 });
+  a.h = a.target = R; b.h = b.target = L;
+  go(g, a, R, 6); b.x = 70; b.y = 40; b.trail = [];   // a יוצא קודם => שובל ארוך יותר
+  for (let i = 0; i < 400 && a.alive && b.alive; i++) { a.h = a.target = R; b.h = b.target = L; g.step(); }
+  ok(!a.alive && b.alive, 'שניהם בחוץ – בעל השובל הארוך נפסל');
+  const g2 = new Game({ size: 60, rand: seeded(9) });
   const c = g2.addPlayer({}), d = g2.addPlayer({});
-  g2.spawn(c, { x: 10, y: 10 }); g2.spawn(d, { x: 20, y: 20 });
-  c.x = 12; c.y = 10; c.dir = R; d.x = 14; d.y = 10; d.dir = L; d.trailCells = [];
-  g2.setOwner(g2.idx(13,10), c.id);
-  g2.step();
-  ok(c.alive && !d.alive && c.kills === 1, 'מי שבתוך השטח שלו שורד בהתנגשות ראש בראש');
+  g2.spawn(c, { x: 20, y: 30 }); g2.spawn(d, { x: 45, y: 30 });
+  d.x = 26; d.y = 30; d.trail = [];
+  for (let i = 0; i < 10 && d.alive; i++) { c.h = c.target = R; d.h = d.target = L; g2.step(); }
+  ok(c.alive && !d.alive && c.kills === 1, 'מי שבתוך השטח שלו שורד');
 }
 
-console.log('השוואה למימוש ייחוס – 300 לולאות אקראיות');
+// מימוש ייחוס: מילוי נאיבי מכל גבול המפה
+function reference(owner, G, id) {
+  const seen = new Uint8Array(G * G), st = [];
+  const add = k => { if (!seen[k] && owner[k] !== id) { seen[k] = 1; st.push(k); } };
+  for (let i = 0; i < G; i++) { add(i); add((G - 1) * G + i); add(i * G); add(i * G + G - 1); }
+  while (st.length) { const c = st.pop(), x = c % G, y = (c - x) / G;
+    if (x > 0) add(c - 1); if (x < G - 1) add(c + 1); if (y > 0) add(c - G); if (y < G - 1) add(c + G); }
+  const out = new Uint8Array(G * G); for (let k = 0; k < G * G; k++) out[k] = owner[k] === id || !seen[k] ? 1 : 0; return out;
+}
+console.log('השוואה למימוש ייחוס – 400 מסלולים אקראיים');
 {
   let good = 0, total = 0;
-  for (let t = 0; t < 300; t++) {
+  for (let t = 0; t < 400; t++) {
     const rnd = seeded(100 + t), g = new Game({ size: 40, rand: rnd });
     const p = g.addPlayer({}); g.spawn(p, { x: 20, y: 20 });
-    // שטח אקראי מוקדם
-    for (let k = 0; k < 6; k++) { const x = 3 + Math.floor(rnd()*34), y = 3 + Math.floor(rnd()*34); for (let yy=y-2; yy<=y+2; yy++) for (let xx=x-2; xx<=x+2; xx++) g.setOwner(g.idx(xx,yy), p.id); }
     let steps = 0;
-    while (p.alive && steps++ < 200) {
-      const before = p.trailCells.length;
-      if (rnd() < 0.25) g.turn(p, Math.floor(rnd()*4));
-      const snapshot = g.owner.slice(), trail = p.trailCells.slice();
-      const nx = p.x + Game.DX[p.queue.length ? p.queue[0] : p.dir], ny = p.y + Game.DY[p.queue.length ? p.queue[0] : p.dir];
-      const willCapture = before > 0 && g.inBounds(nx, ny) && g.owner[g.idx(nx,ny)] === p.id;
+    while (p.alive && steps++ < 400) {
+      p.target = p.h + (rnd() - 0.45) * 0.8;
+      const willHome = p.trail.length > 0;
+      const snapOwner = g.owner.slice(), snapTrail = p.trail.slice();
+      const before = g.counts[p.id];
       g.step();
-      if (willCapture && p.alive) {
-        // חישוב ייחוס על המצב הקודם + השובל
-        const h = new Game({ size: 40 }); h.owner.set(snapshot); for (const c of trail) h.owner[c] = p.id;
-        const ref = reference(h, p.id); let same = true;
+      if (willHome && p.alive && p.trail.length === 0) {
+        // ייחוס: מטביעים את אותו שובל על עותק ואז מילוי נאיבי
+        const h = new Game({ size: 40 }); h.owner.set(snapOwner); h.counts[p.id] = before;
+        h.players.push(p);
+        const tr = snapTrail.concat([p.x, p.y]);
+        for (let k = 0; k + 3 < tr.length; k += 2) { const ax = tr[k], ay = tr[k+1], bx = tr[k+2], by = tr[k+3];
+          const m = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / (h.CELL * 0.5)));
+          for (let s = 0; s <= m; s++) h.stamp(ax + (bx - ax) * s / m, ay + (by - ay) * s / m, h.STAMP_R, p.id); }
+        const ref = reference(h.owner, h.G, p.id); let same = true;
         for (let k = 0; k < ref.length; k++) if ((g.owner[k] === p.id ? 1 : 0) !== ref[k]) { same = false; break; }
         total++; if (same) good++;
       }
     }
   }
-  ok(total > 50 && good === total, `כיבוש זהה לייחוס ב-${good}/${total} מקרים`);
+  ok(total > 30 && good === total, `כיבוש זהה לייחוס ב-${good}/${total} מקרים`);
 }
 
-console.log('סימולציית בוטים (3000 צעדים)');
-{
-  const g = new Game({ size: 100, rand: seeded(9) });
+console.log('סימולציית בוטים');
+for (const lvl of ['easy', 'normal', 'hard']) {
+  const g = new Game({ size: 100, rand: seeded(11) });
   for (let i = 0; i < 8; i++) { const p = g.addPlayer({ isBot: true }); g.spawn(p); }
-  let deaths = 0, captures = 0, t0 = Date.now();
-  for (let s = 0; s < 3000; s++) {
-    for (const p of g.players) if (p.alive) AI.think(g, p, 'hard');
+  let deaths = 0, captures = 0, t0 = Date.now(), reasons = {};
+  const ticks = 6000; // 5 דקות משחק
+  for (let s = 0; s < ticks; s++) {
+    for (const p of g.players) if (p.alive) AI.think(g, p, lvl);
     g.step();
-    for (const e of g.events) { if (e.type === 'death') deaths++; if (e.type === 'capture') captures++; }
+    for (const e of g.events) { if (e.type === 'death') { deaths++; reasons[e.reason] = (reasons[e.reason] || 0) + 1; } if (e.type === 'capture') captures++; }
     g.events.length = 0;
-    for (const p of g.players) if (!p.alive && s % 20 === 0) g.spawn(p);
+    if (s % 40 === 0) for (const p of g.players) if (!p.alive) g.spawn(p);
   }
-  // בדיקת עקביות ספירות
   const c = new Int32Array(32); for (let i = 0; i < g.owner.length; i++) c[g.owner[i]]++;
   let cons = true; for (let k = 1; k <= 8; k++) if (c[k] !== g.counts[k]) cons = false;
-  ok(cons, 'ספירות שטח עקביות');
-  ok(captures > 50, 'בוטים כובשים (' + captures + ' כיבושים, ' + deaths + ' מיתות)');
-  ok(deaths < captures, 'בוטים לא מתאבדים כל הזמן');
-  console.log('    זמן:', Date.now() - t0, 'ms ; שטח מקסימלי:', Math.max(...g.players.map(p => p.bestPct)).toFixed(1) + '%');
+  const ms = Date.now() - t0;
+  ok(cons && captures > 200 && deaths < captures / 3, `${lvl}: ${captures} כיבושים, ${deaths} מיתות ${JSON.stringify(reasons)}, ${(ms / ticks).toFixed(2)}ms לצעד, שטח מקס' ${Math.max(...g.players.map(p => p.bestPct)).toFixed(1)}%`);
 }
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);

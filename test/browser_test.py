@@ -24,15 +24,22 @@ try:
         pg.screenshot(path=os.path.join(ROOT, 'test', 'menu.png'))
         pg.click('#avatarPick button:nth-child(3)')
         pg.click('#playBtn')
-        # משחק: מזיזים את השחקן בהחלקות/מקשים כדי שיכבוש קצת
-        for d in ['ArrowRight']*1:
-            pg.keyboard.press(d)
-        seq = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp']
-        for i, k in enumerate(seq):
-            pg.keyboard.press(k); pg.wait_for_timeout(700)
-        pg.wait_for_timeout(1500)
+        # משחק: לולאה עם חיצים מוחזקים כדי לכבוש שטח
+        for k, ms in [('ArrowRight', 900), ('ArrowDown', 900), ('ArrowLeft', 900), ('ArrowUp', 1100)]:
+            pg.keyboard.down(k); pg.wait_for_timeout(ms); pg.keyboard.up(k)
+        # גרירה: כיוון המטרה צריך להתאים לזווית הגרירה (360°)
+        pg.mouse.move(200, 500); pg.mouse.down(); pg.mouse.move(240, 540, steps=4)
+        ang = pg.evaluate('window.__kovesh.me.target')
+        pg.mouse.up()
+        results['drag_45deg_target'] = round(ang, 2)
+        results['drag_ok'] = abs(ang - 0.785) < 0.15
+        # מחזירים את השחקן הביתה (בעזרת היגוי לנקודת הבית) ומחכים שהבוטים יכבשו
+        pg.evaluate("""() => new Promise(r => { const me = window.__kovesh.me; let n = 0;
+            const t = setInterval(() => { me.target = Math.atan2(me.homeY - me.y, me.homeX - me.x); if (!me.trail.length || ++n > 120) { clearInterval(t); r(); } }, 50); })""")
+        pg.evaluate("""() => new Promise(r => { const me = window.__kovesh.me; let n = 0;
+            const t = setInterval(() => { me.target = me.h + 0.08; if (++n > 140) { clearInterval(t); r(); } }, 50); })""")
         st = pg.evaluate('''() => { const k = window.__kovesh, g = k.game, me = k.me;
-            return { state: k.state, alive: me.alive, pct: g.pct(me), tick: g.tickNo, bots: g.players.filter(p=>p.isBot).length,
+            return { state: k.state, alive: me.alive, pct: +g.pct(me).toFixed(2), tick: g.tickNo, bots: g.players.filter(p=>p.isBot).length, trailPts: me.trail.length/2, heading: +me.h.toFixed(2),
                      botsAlive: g.players.filter(p=>p.isBot && p.alive).length, dpr: document.getElementById('game').width / innerWidth }; }''')
         results['state'] = st
         if st['state'] == 'play':
@@ -44,10 +51,8 @@ try:
         results['pause_stops_ticks'] = (t1 == t2) and pg.evaluate('window.__kovesh.state') == 'paused'
         # מדידת קצב פריימים בפועל (ציפייה ~30)
         pg.click('#resumeBtn')
-        fps = pg.evaluate('''() => new Promise(r => { let n = 0, t0 = performance.now(); const o = CanvasRenderingContext2D.prototype.fillRect;
-            const c = document.getElementById('game').getContext('2d'); const orig = c.fillRect.bind(c);
-            c.fillRect = function(...a){ if (a[0]===0 && a[1]===0) n++; return orig(...a); };
-            setTimeout(() => { c.fillRect = orig; r(n / ((performance.now()-t0)/1000)); }, 2000); })''')
+        fps = pg.evaluate('''() => new Promise(r => { const f0 = window.__kovesh.frames, t0 = performance.now();
+            setTimeout(() => r((window.__kovesh.frames - f0) / ((performance.now() - t0) / 1000)), 2000); })''')
         results['render_fps'] = round(fps, 1)
         # Service worker
         pg.wait_for_timeout(500)
@@ -74,5 +79,5 @@ errors = [e for e in errors if e not in blocked]
 results['csp_blocked_third_party'] = len(blocked)
 results['console_errors'] = errors
 print(json.dumps(results, ensure_ascii=False, indent=1))
-ok = not errors and results.get('pause_stops_ticks') and results.get('over_visible') and not results['external_requests']
+ok = results.get('drag_ok') and 20 <= results.get('render_fps', 0) <= 33 and not errors and results.get('pause_stops_ticks') and results.get('over_visible') and not results['external_requests']
 print('PASS' if ok else 'FAIL'); sys.exit(0 if ok else 1)
