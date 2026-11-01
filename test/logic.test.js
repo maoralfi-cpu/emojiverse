@@ -1,6 +1,7 @@
 // בדיקות לוגיקה לתנועה רציפה: node test/logic.test.js
 const Game = require('../js/game.js');
 const AI = require('../js/ai.js');
+const DragInput = require('../js/input.js');
 let pass = 0, fail = 0;
 function ok(c, m) { if (c) { pass++; console.log('  ✓', m); } else { fail++; console.log('  ✗', m); } }
 function seeded(s) { return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
@@ -73,9 +74,73 @@ console.log('שובל עצמי');
   const g2 = new Game({ size: 60, rand: seeded(6) });
   const q = g2.addPlayer({}); g2.spawn(q, { x: 10, y: 30 });
   go(g2, q, R, 8);
-  for (let i = 0; i < 14; i++) { q.target = q.h + 1; g2.step(); } // פנייה חדה של ~180°
+  const h0 = q.h; let turned = 0;
+  while (turned < Math.PI - 1e-6) { q.target = h0 + Math.PI; g2.step(); turned = Math.abs(Game.angDiff(q.h, h0)); } // פניית פרסה במהירות סיבוב מקסימלית
   go(g2, q, q.h, 2);
   ok(q.alive, 'פניית פרסה חדה לא נחשבת פגיעה עצמית');
+}
+
+
+console.log('מיפוי קלט מגע לזווית');
+{
+  const near = (a, b) => Math.abs(Game.angDiff(a, b)) < 0.02;
+  const d = new DragInput('medium', 'drag');
+  d.down(100, 100);
+  ok(d.move(105, 103) === null, 'אזור מת: תזוזה של ~6px לא משנה כיוון');
+  ok(near(d.move(130, 100), 0), 'ימינה = 0');
+  d.down(100, 100); ok(near(d.move(100, 60), -Math.PI / 2), 'למעלה במסך = -π/2 (y למטה, בלי היפוך)');
+  d.down(100, 100); ok(near(d.move(70, 100), Math.PI), 'שמאלה = π (בלי בלבול RTL)');
+  d.down(100, 100); ok(near(d.move(130, 130), Math.PI / 4), 'אלכסון למטה-ימינה = π/4');
+  // העוגן נגרר: אחרי גרירה ארוכה ימינה, תזוזה קטנה למעלה משנה כיוון מיד
+  d.down(0, 0); d.move(200, 0);
+  ok(Math.abs(d.ax - 140) < 1e-6, 'העוגן נגרר במרחק 60px מאחורי האצבע');
+  const a = d.move(200, -40);
+  const a2 = d.move(200, -40);
+  ok(a < -0.4 && Math.abs(a2 - Math.atan2(-40, 60)) < 0.15, 'שינוי כיוון מיד אחרי גרירה ארוכה (' + a.toFixed(2) + ' → ' + a2.toFixed(2) + ')');
+  const lo = new DragInput('low', 'drag'); lo.down(0, 0);
+  ok(lo.move(10, 0) === null && new DragInput('high').cfg.dead < 8, 'רגישות: אזור מת גדול יותר ב"נמוכה", קטן יותר ב"גבוהה"');
+  const j = new DragInput('medium', 'joy'); j.down(50, 50); const ja = j.move(50 + 200, 50 + 200);
+  ok(near(ja, Math.PI / 4) && Math.hypot(j.kx, j.ky) <= 50.001, "ג'ויסטיק: זווית אנלוגית, הידית מוגבלת לרדיוס");
+}
+
+console.log('מהירות וסיבוב');
+{
+  const g = new Game({ size: 60, rand: seeded(21) });
+  ok(Math.abs(g.SPEED - 9.75) < 1e-9, 'מהירות 9.75 יח\'/ש\' (×1.5)');
+  ok(g.TURN * 180 / Math.PI >= 540, 'קצב סיבוב מקסימלי ≥ 540°/ש\' (' + Math.round(g.TURN * 180 / Math.PI) + ')');
+  const p = g.addPlayer({}); g.spawn(p, { x: 30, y: 30 }); p.h = p.target = 0;
+  p.target = Math.PI * 0.999; let n = 0; while (Math.abs(Game.angDiff(p.h, p.target)) > 1e-6 && n < 100) { g.step(); n++; }
+  ok(n * g.DT <= 0.34, 'פנייה של 180° תוך ' + (n * g.DT).toFixed(2) + ' שניות');
+}
+
+console.log('אין "מנהור" דרך שובל');
+{
+  // מהירות קיצונית: צעד אחד ארוך מפי 2 מרוחב הפגיעה – בדיקה סוחפת חייבת לתפוס
+  let caught = 0, tries = 0;
+  for (let off = 0; off < 1; off += 0.05) {
+    const g = new Game({ size: 60, speed: 40, rand: seeded(30) });
+    const a = g.addPlayer({}), b = g.addPlayer({});
+    g.spawn(a, { x: 10, y: 20 }); g.spawn(b, { x: 45, y: 50 });
+    a.trail = [15, 20, 25, 20]; a.tb = [15, 20, 25, 20]; a.x = 25; a.y = 20; a.h = a.target = 0; a.x = 14; a.y = 25; // a ממשיך מחוץ למסלול
+    a.trail = [15, 20, 25, 20]; a.x = 25.5; a.y = 20;
+    b.x = 20; b.y = 20 + 0.6 + off; b.h = b.target = -Math.PI / 2; b.trail = [];
+    a.h = a.target = Math.PI / 2;
+    g.step(); tries++;
+    if (!a.alive) caught++;
+  }
+  ok(caught === tries, `חציית שובל בצעד ארוך נתפסה ${caught}/${tries}`);
+  // ובמהירות הרגילה, מכל זווית חצייה
+  let c2 = 0, t2 = 0;
+  for (let ang = 0.3; ang < Math.PI - 0.3; ang += 0.15) {
+    const g = new Game({ size: 60, rand: seeded(31) });
+    const a = g.addPlayer({}), b = g.addPlayer({});
+    g.spawn(a, { x: 5, y: 5 }); g.spawn(b, { x: 50, y: 50 });
+    a.trail = [10, 30, 40, 30]; a.tb = [10, 30, 40, 30]; a.x = 40; a.y = 30.0; a.h = a.target = 0;
+    b.x = 25 - Math.cos(ang) * 3; b.y = 30 + Math.sin(ang) * 3; b.h = b.target = -ang; b.trail = [];
+    for (let i = 0; i < 30 && a.alive; i++) { a.target = a.h; b.target = -ang; g.step(); }
+    t2++; if (!a.alive) c2++;
+  }
+  ok(c2 === t2, `חציה בזוויות שונות במהירות הרגילה נתפסה ${c2}/${t2}`);
 }
 
 console.log('קיר');

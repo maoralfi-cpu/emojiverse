@@ -44,6 +44,11 @@ try:
         results['state'] = st
         if st['state'] == 'play':
             pg.screenshot(path=os.path.join(ROOT, 'screenshot.png'))
+        # אם השחקן נפסל במהלך התסריט (בוט/קיר) – מתחילים משחק חדש כדי להמשיך לבדוק
+        results['died_during_script'] = st['state'] != 'play'
+        if st['state'] != 'play':
+            pg.evaluate('window.__kovesh.start()'); pg.wait_for_timeout(2500)
+            pg.screenshot(path=os.path.join(ROOT, 'screenshot.png'))
         # השהיה עם P
         pg.keyboard.press('KeyP'); pg.wait_for_timeout(200)
         t1 = pg.evaluate('window.__kovesh.game.tickNo'); pg.wait_for_timeout(600)

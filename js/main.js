@@ -6,7 +6,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------- הגדרות ושיאים ----------
-  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 30, dpr: 2, joy: false, mini: true, vib: true };
+  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 30, dpr: 2, joy: false, mini: true, vib: true, sens: 'medium' };
   var S = load('kovesh.settings', DEFAULTS);
   var BEST = load('kovesh.best', { pct: 0, kills: 0 });
   function load(k, def) {
@@ -14,10 +14,10 @@
   }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 
-  var EXTRA_COLORS = ['#b04be8', '#00b3a4', '#8d6e63'];
+  var EXTRA_COLORS = ['#c98a96', '#8e9bb3', '#c2b48a'];   // פסטל נורדי נוסף לבוטים כפולים
   var BOT_NAMES = ['שועל', 'נמר', 'ינשוף', 'דב', 'זאב', 'צבי', 'נשר', 'תנין', 'פנתר', 'דולפין'];
-  var TICK_MS = 50;               // 20 צעדי לוגיקה בשנייה (קבוע)
-  var RESPAWN_TICKS = 60;         // ~3 שניות
+  var TICK_MS = 1000 / 30;        // 30 צעדי לוגיקה בשנייה (קבוע)
+  var RESPAWN_TICKS = 90;         // ~3 שניות
   var VIEW_UNITS = 24;            // כמה יחידות עולם רואים לאורך הצלע הקצרה
 
   // ---------- מצב ----------
@@ -38,7 +38,7 @@
     el.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S[key] = parse ? parse(b.dataset.v) : b.dataset.v; paint(); save('kovesh.settings', S); });
     paint();
   }
-  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number);
+  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens');
   $('nameInput').value = S.name;
   $('joyChk').checked = S.joy; $('miniChk').checked = S.mini; $('vibChk').checked = S.vib;
 
@@ -87,6 +87,17 @@
   // ---------- התחלת משחק ----------
   function hexRgb(h) { var n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
   function mix(c, d, t) { return [Math.round(c[0] + (d[0] - c[0]) * t), Math.round(c[1] + (d[1] - c[1]) * t), Math.round(c[2] + (d[2] - c[2]) * t)]; }
+  var SLATE = [46, 52, 64];
+  // הגברת רוויה (HSL) לשובל
+  function saturate(c, sm, lm) {
+    var r = c[0] / 255, g2 = c[1] / 255, b = c[2] / 255, mx = Math.max(r, g2, b), mn = Math.min(r, g2, b), l = (mx + mn) / 2, h = 0, s = 0, d = mx - mn;
+    if (d) { s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+      h = mx === r ? (g2 - b) / d + (g2 < b ? 6 : 0) : mx === g2 ? (b - r) / d + 2 : (r - g2) / d + 4; h /= 6; }
+    s = Math.min(1, s * sm); l = l * lm;
+    function f(t) { var q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q; t = (t + 1) % 1;
+      return t < 1 / 6 ? p + (q - p) * 6 * t : t < 0.5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; }
+    return [Math.round(f(h + 1 / 3) * 255), Math.round(f(h) * 255), Math.round(f(h - 1 / 3) * 255)];
+  }
   function css(c, a) { return a == null ? 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')' : 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
 
   function startGame() {
@@ -109,9 +120,10 @@
     avatarURLs = [null];
     g.players.forEach(function (p) {
       var c = hexRgb(p.color);
-      rgb[p.id] = c; fillCss[p.id] = css(mix(c, [255, 255, 255], 0.08));
-      trailCss[p.id] = css(mix(c, [255, 255, 255], 0.35), 0.85);
-      darkCss[p.id] = css(mix(c, [0, 0, 0], 0.38)); lineCss[p.id] = css(mix(c, [0, 0, 0], 0.22));
+      rgb[p.id] = c; fillCss[p.id] = p.color;
+      trailCss[p.id] = css(saturate(c, 1.45, 0.9), 0.9);                 // אותו גוון, רווי יותר
+      darkCss[p.id] = css(mix(c, SLATE, 0.3), 0.55);                     // צל רך
+      lineCss[p.id] = css(mix(c, SLATE, p === me ? 0.45 : 0.25));        // קו מתאר כהה יותר באותו גוון
       avatarURLs[p.id] = Avatars.dataURL(p.avatar, 64, p.color);
       p.blinkAt = performance.now() + 1000 + Math.random() * 3000;
     });
@@ -248,13 +260,13 @@
       var sx = (x0 - layerX) * unitPx, sy = (y0 - layerY) * unitPx;
       c.beginPath(); c.rect(Math.floor(sx), Math.floor(sy), Math.ceil((x1 - x0) * unitPx) + 2, Math.ceil((y1 - y0) * unitPx) + 2); c.clip();
     }
-    c.fillStyle = '#2a2c45'; c.fillRect(0, 0, layer.width, layer.height);
+    c.fillStyle = '#d8dee9'; c.fillRect(0, 0, layer.width, layer.height);
     c.setTransform(unitPx, 0, 0, unitPx, -layerX * unitPx, -layerY * unitPx);
-    c.fillStyle = '#eef0fa'; c.fillRect(0, 0, N, N);
+    c.fillStyle = '#f4f6fa'; c.fillRect(0, 0, N, N);
     // רשת עדינה כל 4 יחידות
     var gx0 = Math.max(0, Math.floor(layerX / 4) * 4), gy0 = Math.max(0, Math.floor(layerY / 4) * 4);
     var gx1 = Math.min(N, layerX + layer.width / unitPx), gy1 = Math.min(N, layerY + layer.height / unitPx);
-    c.strokeStyle = '#e1e4f3'; c.lineWidth = 0.08; c.beginPath();
+    c.strokeStyle = '#e3e8f0'; c.lineWidth = 0.08; c.beginPath();
     for (var x = gx0; x <= gx1; x += 4) { c.moveTo(x, Math.max(0, layerY)); c.lineTo(x, gy1); }
     for (var y = gy0; y <= gy1; y += 4) { c.moveTo(Math.max(0, layerX), y); c.lineTo(gx1, y); }
     c.stroke();
@@ -263,13 +275,14 @@
     c.translate(0, 0.28);
     for (id = 1; id < paths.length; id++) if (paths[id]) { c.fillStyle = darkCss[id]; c.fill(paths[id], 'evenodd'); }
     c.translate(0, -0.28);
-    c.lineJoin = 'round'; c.lineWidth = 0.14;
+    c.lineJoin = 'round';
     for (id = 1; id < paths.length; id++) if (paths[id]) {
       c.fillStyle = fillCss[id]; c.fill(paths[id], 'evenodd');
+      c.lineWidth = id === me.id ? 0.26 : 0.12;           // השטח שלי בולט יותר
       c.strokeStyle = lineCss[id]; c.stroke(paths[id]);
     }
     // גבול המפה
-    c.strokeStyle = '#ff4d6d'; c.lineWidth = 0.25; c.strokeRect(0, 0, N, N);
+    c.strokeStyle = '#4c566a'; c.lineWidth = 0.25; c.strokeRect(0, 0, N, N);
     c.restore();
   }
 
@@ -278,7 +291,15 @@
     if (!g) return;
     frames++;
     var cw = canvas.width, ch = canvas.height;
-    if (me.alive) { camX = lerp(me.px, me.x, alpha); camY = lerp(me.py, me.y, alpha); }
+    // מיקום מוצג: מהמצב האחרון קדימה לפי הכיוון העדכני ביותר (כולל קלט שהגיע אחרי הצעד האחרון)
+    var ps = g.players, k, p, maxTurn = g.TURN * g.DT, step = g.SPEED * g.DT;
+    for (k = 0; k < ps.length; k++) {
+      p = ps[k]; if (!p.alive) continue;
+      var dh = Game.angDiff(p.target, p.h); if (dh > maxTurn) dh = maxTurn; else if (dh < -maxTurn) dh = -maxTurn;
+      p.rh = p.h + dh * alpha;
+      p.rx = p.x + Math.cos(p.rh) * step * alpha; p.ry = p.y + Math.sin(p.rh) * step * alpha;
+    }
+    if (me.alive) { camX = me.rx; camY = me.ry; }
     var vx0 = camX - cw / 2 / unitPx, vy0 = camY - ch / 2 / unitPx, vw = cw / unitPx, vh = ch / unitPx;
     var margin = 8;
     if (!layer || vx0 < layerX || vy0 < layerY || vx0 + vw > layerX + layer.width / unitPx || vy0 + vh > layerY + layer.height / unitPx) {
@@ -295,14 +316,13 @@
     // שובלים – קווים מעוגלים
     ctx.setTransform(unitPx, 0, 0, unitPx, -vx0 * unitPx, -vy0 * unitPx);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = 0.8;
-    var ps = g.players, k, p;
     for (k = 0; k < ps.length; k++) {
       p = ps[k];
       if (!p.alive || !p.trail.length) continue;
       var t = p.trail;
       ctx.strokeStyle = trailCss[p.id]; ctx.beginPath(); ctx.moveTo(t[0], t[1]);
       for (var i = 2; i < t.length; i += 2) ctx.lineTo(t[i], t[i + 1]);
-      ctx.lineTo(lerp(p.px, p.x, alpha), lerp(p.py, p.y, alpha));
+      ctx.lineTo(p.x, p.y); ctx.lineTo(p.rx, p.ry);
       ctx.stroke();
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -314,15 +334,15 @@
     for (k = 0; k < ps.length; k++) {
       p = ps[k];
       if (!p.alive) continue;
-      var hx = (lerp(p.px, p.x, alpha) - vx0) * unitPx, hy = (lerp(p.py, p.y, alpha) - vy0) * unitPx;
+      var hx = (p.rx - vx0) * unitPx, hy = (p.ry - vy0) * unitPx;
       if (hx < -size * 2 || hy < -size * 2 || hx > cw + size * 2 || hy > ch + size * 2) continue;
-      var head = p.ph + Game.angDiff(p.h, p.ph) * alpha;
+      var head = p.rh;
       var blink = 0;
       if (now > p.blinkAt) { var bt = (now - p.blinkAt) / 140; if (bt >= 1) p.blinkAt = now + 2000 + Math.random() * 3500; else blink = Math.sin(bt * Math.PI); }
       Avatars.draw(ctx, p.avatar, p.color, hx, hy, size, head, 1, blink);
-      ctx.lineWidth = Math.max(2, fontPx * 0.25); ctx.strokeStyle = 'rgba(0,0,0,.5)';
+      ctx.lineWidth = Math.max(2, fontPx * 0.3); ctx.strokeStyle = 'rgba(255,255,255,.85)';
       ctx.strokeText(p.name, hx, hy - size * 0.62);
-      ctx.fillStyle = '#fff'; ctx.fillText(p.name, hx, hy - size * 0.62);
+      ctx.fillStyle = '#3b4252'; ctx.fillText(p.name, hx, hy - size * 0.62);
     }
     // אפקט פסילה
     for (var e = effects.length - 1; e >= 0; e--) {
@@ -354,7 +374,7 @@
       var mw = mini.width;
       mctx.clearRect(0, 0, mw, mw); mctx.imageSmoothingEnabled = true;
       mctx.drawImage(mm, 0, 0, mw, mw);
-      if (me.alive) { mctx.fillStyle = '#fff'; mctx.beginPath(); mctx.arc(me.x / g.W * mw, me.y / g.W * mw, 3, 0, 7); mctx.fill(); }
+      if (me.alive) { mctx.fillStyle = '#2e3440'; mctx.strokeStyle = '#fff'; mctx.lineWidth = 1.5; mctx.beginPath(); mctx.arc(me.x / g.W * mw, me.y / g.W * mw, 3.5, 0, 7); mctx.fill(); mctx.stroke(); }
     }
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -371,7 +391,7 @@
   function toMenu() {
     state = 'menu'; stopLoop(); g = null;
     $('hud').classList.add('hidden'); $('joyBase').classList.add('hidden');
-    ctx.fillStyle = '#1b1d2e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#eceff4'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     showBest(); show('menu');
   }
   function gameOver(ev) {
@@ -420,35 +440,38 @@
   window.addEventListener('keyup', function (e) { delete keysHeld[e.code]; delete keysHeld[e.key]; });
   window.addEventListener('blur', function () { keysHeld = {}; });
 
-  // גרירה (כיוון האצבע) / ג'ויסטיק אנלוגי
-  var touchId = null, sx = 0, sy = 0, joyBase = $('joyBase'), joyKnob = $('joyKnob');
-  var DRAG_MIN = 10, DRAG_LEASH = 55, JOY_R = 50, JOY_DEAD = 10;
+  // גרירה יחסית (ברירת מחדל) / ג'ויסטיק צף – ראו js/input.js. הקלט מוחל מיד על כיוון המטרה,
+  // והציור משתמש בכיוון העדכני ביותר, כך שאין המתנה לצעד הבא.
+  var touchId = null, joyBase = $('joyBase'), joyKnob = $('joyKnob'), drag = new DragInput(S.sens, S.joy ? 'joy' : 'drag');
   function joyRest() {
     joyBase.style.left = (W - 95) + 'px'; joyBase.style.top = (H - 110) + 'px';
-    joyKnob.style.transform = '';
+    joyKnob.style.transform = ''; joyBase.classList.remove('active');
   }
-  function joySetup() { joyBase.classList.toggle('hidden', !S.joy); if (S.joy) joyRest(); }
-  canvas.addEventListener('pointerdown', function (e) {
+  function joySetup() { drag.set(S.sens, S.joy ? 'joy' : 'drag'); joyBase.classList.toggle('hidden', !S.joy); if (S.joy) joyRest(); }
+  function onDown(e) {
     if (state !== 'play' || touchId !== null) return;
-    touchId = e.pointerId; sx = e.clientX; sy = e.clientY;
-    if (S.joy) { joyBase.style.left = sx + 'px'; joyBase.style.top = sy + 'px'; joyKnob.style.transform = ''; }
-  });
-  canvas.addEventListener('pointermove', function (e) {
-    if (e.pointerId !== touchId || state !== 'play' || !me.alive) return;
-    var dx = e.clientX - sx, dy = e.clientY - sy, dist = Math.hypot(dx, dy);
-    if (S.joy) {
-      var k = dist > JOY_R ? JOY_R / dist : 1;
-      joyKnob.style.transform = 'translate(' + (dx * k) + 'px,' + (dy * k) + 'px)';
-      if (dist > JOY_DEAD) me.target = Math.atan2(dy, dx);
-    } else if (dist > DRAG_MIN) {
-      me.target = Math.atan2(dy, dx);
-      // נקודת העוגן נגררת אחרי האצבע, כך שהכיוון תמיד לפי התנועה האחרונה
-      if (dist > DRAG_LEASH) { sx = e.clientX - dx / dist * DRAG_LEASH; sy = e.clientY - dy / dist * DRAG_LEASH; }
-    }
-  });
-  function endTouch(e) { if (e.pointerId !== touchId) return; touchId = null; if (S.joy) joyRest(); }
+    e.preventDefault();
+    touchId = e.pointerId; drag.down(e.clientX, e.clientY);
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    if (S.joy) { joyBase.style.left = e.clientX + 'px'; joyBase.style.top = e.clientY + 'px'; joyKnob.style.transform = ''; joyBase.classList.add('active'); }
+  }
+  function onMove(e) {
+    if (e.pointerId !== touchId || state !== 'play') return;
+    e.preventDefault();
+    var list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+    if (!list || !list.length) list = [e];
+    var a = null;
+    for (var i = 0; i < list.length; i++) { var r = drag.move(list[i].clientX, list[i].clientY); if (r != null) a = r; }
+    if (a != null && me && me.alive) me.target = a;
+    if (S.joy) joyKnob.style.transform = 'translate(' + drag.kx + 'px,' + drag.ky + 'px)';
+  }
+  function endTouch(e) { if (e.pointerId !== touchId) return; touchId = null; drag.up(); if (S.joy) joyRest(); }
+  canvas.addEventListener('pointerdown', onDown, { passive: false });
+  canvas.addEventListener('pointermove', onMove, { passive: false });
   canvas.addEventListener('pointerup', endTouch);
   canvas.addEventListener('pointercancel', endTouch);
+  canvas.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false }); // מונע גלילה/זום של הדפדפן
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
   // ---------- Service Worker (עבודה בלי אינטרנט) ----------
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

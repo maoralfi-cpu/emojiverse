@@ -5,19 +5,21 @@
   'use strict';
   var TAU = Math.PI * 2;
   var AVATARS = [
-    { name: 'נובה', shape: 'orb',      color: '#7c5cff', eyes: 'dot'  },
-    { name: 'קאי',  shape: 'squircle', color: '#22b8f0', eyes: 'pill' },
-    { name: 'לונה', shape: 'drop',     color: '#ff5fa2', eyes: 'ring' },
-    { name: 'ריו',  shape: 'tri',      color: '#ff9a1f', eyes: 'dot'  },
-    { name: 'מיקה', shape: 'blob',     color: '#16c47f', eyes: 'glow' },
-    { name: 'זיו',  shape: 'pill',     color: '#f2c200', eyes: 'pill' },
-    { name: 'טל',   shape: 'hex',      color: '#ff4d5e', eyes: 'ring' },
-    { name: 'אורי', shape: 'flower',   color: '#3d7bff', eyes: 'glow' }
+    { name: 'נובה', shape: 'orb',      color: '#b8a2d9', eyes: 'dot'  },
+    { name: 'קאי',  shape: 'squircle', color: '#7f9cc9', eyes: 'pill' },
+    { name: 'לונה', shape: 'drop',     color: '#e3a1b4', eyes: 'ring' },
+    { name: 'ריו',  shape: 'tri',      color: '#ecae8f', eyes: 'dot'  },
+    { name: 'מיקה', shape: 'blob',     color: '#93d3b4', eyes: 'glow' },
+    { name: 'זיו',  shape: 'pill',     color: '#e3c98f', eyes: 'pill' },
+    { name: 'טל',   shape: 'hex',      color: '#b0c48f', eyes: 'ring' },
+    { name: 'אורי', shape: 'flower',   color: '#78c2c8', eyes: 'glow' }
   ];
   // צורות שמסתובבות עם כיוון התנועה (יש להן "חזית")
   var ROTATES = { drop: 1, tri: 1, pill: 1 };
 
   function hex2rgb(h) { var n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+  function darker(h, t) { var c = hex2rgb(h), s = [46, 52, 64];
+    return 'rgb(' + Math.round(c[0] + (s[0] - c[0]) * t) + ',' + Math.round(c[1] + (s[1] - c[1]) * t) + ',' + Math.round(c[2] + (s[2] - c[2]) * t) + ')'; }
   function tone(h, t) { // t>0 בהיר יותר, t<0 כהה יותר
     var c = hex2rgb(h), m = t > 0 ? 255 : 0, a = Math.abs(t);
     return 'rgb(' + Math.round(c[0] + (m - c[0]) * a) + ',' + Math.round(c[1] + (m - c[1]) * a) + ',' + Math.round(c[2] + (m - c[2]) * a) + ')';
@@ -72,18 +74,11 @@
     cv = document.createElement('canvas'); var S = cv.width = cv.height = Math.ceil(size * 2);
     var ctx = cv.getContext('2d'), r = size / 2;
     ctx.translate(S / 2, S / 2);
-    // הילה רכה
-    ctx.save(); ctx.shadowColor = tone(color, 0.15); ctx.shadowBlur = size * 0.35;
-    ctx.fillStyle = color; shapePath(ctx, a.shape, r); ctx.fill(); ctx.restore();
-    // מילוי בגרדיאנט
-    var g = ctx.createRadialGradient(-r * 0.35, -r * 0.45, r * 0.1, 0, 0, r * 1.25);
-    g.addColorStop(0, tone(color, 0.55)); g.addColorStop(0.45, color); g.addColorStop(1, tone(color, -0.35));
-    ctx.fillStyle = g; shapePath(ctx, a.shape, r); ctx.fill();
-    // ברק עדין
-    ctx.save(); shapePath(ctx, a.shape, r); ctx.clip();
-    var g2 = ctx.createRadialGradient(-r * 0.4, -r * 0.6, 0, -r * 0.4, -r * 0.6, r * 0.7);
-    g2.addColorStop(0, 'rgba(255,255,255,0.45)'); g2.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g2; ctx.fillRect(-r * 2, -r * 2, r * 4, r * 4); ctx.restore();
+    // צבע אחיד ושטוח (בלי גרדיאנט ובלי הילה)
+    ctx.fillStyle = color; shapePath(ctx, a.shape, r); ctx.fill();
+    // קו מתאר דק בגוון כהה יותר של אותו צבע – כדי שהדמות תבלוט גם על השטח שלה
+    ctx.lineWidth = Math.max(1.5, size * 0.055); ctx.lineJoin = 'round';
+    ctx.strokeStyle = darker(color, 0.42); ctx.stroke();
     cache[key] = cv;
     return cv;
   }
@@ -93,6 +88,9 @@
     var a = AVATARS[index % AVATARS.length], cv = base(index, size, color), S = cv.width, r = size / 2;
     if (look == null) look = 1;
     var hx = Math.cos(heading), hy = Math.sin(heading);
+    // צל שטוח ורך מתחת לדמות (לא מסתובב)
+    ctx.fillStyle = 'rgba(46,52,64,0.12)';
+    ctx.beginPath(); ctx.ellipse(x, y + r * 1.02, r * 0.75, r * 0.17, 0, 0, TAU); ctx.fill();
     ctx.save(); ctx.translate(x, y);
     // מתיחה קלה לכיוון התנועה
     ctx.rotate(heading); ctx.scale(1 + 0.07 * look, 1 - 0.05 * look);

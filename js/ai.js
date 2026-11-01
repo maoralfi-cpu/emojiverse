@@ -6,16 +6,17 @@
   var TAU = Math.PI * 2, angDiff = Game.angDiff;
 
   var LEVELS = {
-    easy:   { outMin: 6,  outMax: 14, maxPts: 70,  danger: 6,  hunt: 0.0,  huntR: 0,  arc: 0.32, probe: 3.0 },
-    normal: { outMin: 8,  outMax: 22, maxPts: 110, danger: 8,  hunt: 0.3,  huntR: 10, arc: 0.36, probe: 3.5 },
-    hard:   { outMin: 10, outMax: 30, maxPts: 150, danger: 10, hunt: 0.6,  huntR: 15, arc: 0.4,  probe: 4.0 }
+    // מרחקים ביחידות עולם; arcR = רדיוס קשת החזרה; probe = מרחק בדיקה קדימה (גדל עם המהירות)
+    easy:   { outMin: 6,  outMax: 14, maxLen: 23, danger: 8,  hunt: 0.0, huntR: 0,  arcR: 4.4, probe: 4.0 },
+    normal: { outMin: 8,  outMax: 22, maxLen: 36, danger: 10, hunt: 0.3, huntR: 12, arcR: 3.9, probe: 4.6 },
+    hard:   { outMin: 10, outMax: 30, maxLen: 49, danger: 13, hunt: 0.6, huntR: 18, arcR: 3.6, probe: 5.2 }
   };
   var OFFS = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.5, -1.5, 2.0, -2.0, 2.6, -2.6, 3.1];
 
   function dangerAt(g, p, x, y) {
     var m = 0.8;
     if (x < m || y < m || x > g.W - m || y > g.W - m) return true;
-    return g.trailDist2(p, x, y, 3, false) < 1.1 * 1.1;
+    return g.trailDist2(p, x, y, g.SELF_SKIP, false) < 1.2 * 1.2;
   }
   function safeHeading(g, p, a, probe) {
     var c = Math.cos(a), s = Math.sin(a);
@@ -59,7 +60,7 @@
 
     if (ai.mode === 'hunt') {
       ai.huntT++;
-      if (ai.huntT > 60 || p.trail.length > L.maxPts / 2) ai.mode = out ? 'return' : 'home';
+      if (ai.huntT > 90 || p.trail.length / 2 * g.SPEED * g.DT > L.maxLen / 2) ai.mode = out ? 'return' : 'home';
       else want = Math.atan2(ai.goal.y - p.y, ai.goal.x - p.x);
     }
 
@@ -71,16 +72,16 @@
         ai.straight = Math.round((L.outMin + g.rand() * (L.outMax - L.outMin)) / (g.SPEED * g.DT) * 0.5);
         ai.arcTotal = Math.PI * (0.85 + g.rand() * 0.4);
       } else {
-        if (ai.homeT % 25 === 0) ai.exitH += (g.rand() - 0.5) * 1.5;
+        if (ai.homeT % 38 === 0) ai.exitH += (g.rand() - 0.5) * 1.5;
         want = ai.exitH;
       }
     }
 
     if (ai.mode === 'out') {
-      if (p.trail.length / 2 > L.maxPts || enemyDist(g, p) < L.danger && p.trail.length > 8) ai.mode = 'return';
+      if (p.trail.length / 2 * g.SPEED * g.DT > L.maxLen || enemyDist(g, p) < L.danger && p.trail.length > 8) ai.mode = 'return';
       else if (ai.t < ai.straight) want = ai.exitH + Math.sin(ai.t * 0.15) * 0.15;
       else {
-        var r = g.TURN * g.DT * L.arc * ai.dir;
+        var r = g.SPEED * g.DT / L.arcR * ai.dir;
         want = p.h + r; ai.turned += Math.abs(r);
         if (ai.turned >= ai.arcTotal) { ai.mode = 'return'; ai.goalT = 0; }
       }

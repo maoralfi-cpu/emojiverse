@@ -10,13 +10,13 @@
     this.W = opts.size || 100;
     this.CELL = 0.5;
     this.G = Math.round(this.W / this.CELL);
-    this.SPEED = opts.speed || 6.5;     // יחידות לשנייה
-    this.DT = 0.05;                     // צעד לוגיקה (20 בשנייה)
-    this.TURN = 4.6;                    // סיבוב מקסימלי, רדיאנים לשנייה
+    this.SPEED = opts.speed || 9.75;    // יחידות לשנייה
+    this.DT = 1 / 30;                   // צעד לוגיקה (30 בשנייה)
+    this.TURN = opts.turn || 10.5;      // סיבוב מקסימלי (~600°/ש'), רדיאנים לשנייה
     this.HIT = 0.5;                     // מרחק פגיעה בשובל
     this.HEADON = 1.2;                  // מרחק התנגשות ראש בראש
     this.SPAWN_R = 3.2;
-    this.SELF_SKIP = 6;                 // מקטעים אחרונים בשובל העצמי שלא נבדקים
+    this.SELF_SKIP = Math.max(4, Math.ceil(1.6 / (this.SPEED * this.DT))); // מקטעים אחרונים (~1.6 יח') שלא נבדקים בשובל העצמי
     this.STAMP_R = 0.55;                // עובי השובל כשהוא הופך לשטח
     var n = this.G * this.G;
     this.owner = new Uint8Array(n);
@@ -42,6 +42,17 @@
     return ex * ex + ey * ey;
   }
   Game.segDist2 = segDist2;
+  /* מרחק (בריבוע) בין שני מקטעים – בדיקה "סוחפת" שמונעת מעבר דרך שובל במהירות גבוהה */
+  function segSegDist2(ax, ay, bx, by, cx, cy, dx, dy) {
+    var d1x = bx - ax, d1y = by - ay, d2x = dx - cx, d2y = dy - cy;
+    var den = d1x * d2y - d1y * d2x;
+    if (den !== 0) {
+      var t = ((cx - ax) * d2y - (cy - ay) * d2x) / den, u = ((cx - ax) * d1y - (cy - ay) * d1x) / den;
+      if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return 0;
+    }
+    return Math.min(segDist2(ax, ay, cx, cy, dx, dy), segDist2(bx, by, cx, cy, dx, dy), segDist2(cx, cy, ax, ay, bx, by), segDist2(dx, dy, ax, ay, bx, by));
+  }
+  Game.segSegDist2 = segSegDist2;
 
   P.cellAt = function (x, y) {
     var cx = Math.floor(x / this.CELL), cy = Math.floor(y / this.CELL);
@@ -156,6 +167,22 @@
     return best;
   };
 
+  /* מרחק מינימלי (בריבוע) ממקטע התנועה a→b לשובל של q */
+  P.trailSegDist2 = function (q, ax, ay, bx, by, skip, live) {
+    var t = q.trail, n = t.length / 2, best = Infinity;
+    if (!n) return best;
+    var last = n - 1 - skip;
+    for (var i = 0; i < last; i++) {
+      var d = segSegDist2(ax, ay, bx, by, t[2 * i], t[2 * i + 1], t[2 * i + 2], t[2 * i + 3]);
+      if (d < best) { best = d; if (!d) return 0; }
+    }
+    if (live && skip === 0) {
+      var d2 = segSegDist2(ax, ay, bx, by, t[2 * n - 2], t[2 * n - 1], q.x, q.y);
+      if (d2 < best) best = d2;
+    }
+    return best;
+  };
+
   /* כיבוש: השובל מוטבע כשטח, ואז מילוי מבחוץ – מה שלא נגיש מבחוץ נכבש */
   P.capture = function (p) {
     var id = p.id, t = p.trail, C = this.CELL, G = this.G, k;
@@ -249,10 +276,10 @@
         if (!q.alive || !q.trail.length) continue;
         var tb = q.tb, ext = this.HIT + 0.5;
         var bx0 = Math.min(tb[0], q.x), by0 = Math.min(tb[1], q.y), bx1 = Math.max(tb[2], q.x), by1 = Math.max(tb[3], q.y);
-        if (p.x < bx0 - ext || p.x > bx1 + ext || p.y < by0 - ext || p.y > by1 + ext) continue;
+        if (Math.max(p.x, p.px) < bx0 - ext || Math.min(p.x, p.px) > bx1 + ext || Math.max(p.y, p.py) < by0 - ext || Math.min(p.y, p.py) > by1 + ext) continue;
         if (q === p) {
-          if (this.trailDist2(p, p.x, p.y, this.SELF_SKIP, false) < hit2) { p.dead = { killer: null, reason: 'self' }; break; }
-        } else if (this.trailDist2(q, p.x, p.y, 0, true) < hit2) trailKills.push([q, p]);
+          if (this.trailSegDist2(p, p.px, p.py, p.x, p.y, this.SELF_SKIP, false) < hit2) { p.dead = { killer: null, reason: 'self' }; break; }
+        } else if (this.trailSegDist2(q, p.px, p.py, p.x, p.y, 0, true) < hit2) trailKills.push([q, p]);
       }
     }
     for (k = 0; k < moving.length; k++) { p = moving[k]; if (p.dead) this.kill(p, p.dead.killer, p.dead.reason); }

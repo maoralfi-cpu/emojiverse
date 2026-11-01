@@ -1,8 +1,8 @@
 /* כובש – Service Worker: שומר את כל הקבצים לעבודה מלאה בלי אינטרנט */
-const VERSION = 'kovesh-20261101233520';
+const VERSION = 'kovesh-20261101234757';
 const ASSETS = [
   './', './index.html', './style.css', './manifest.webmanifest',
-  './js/game.js', './js/ai.js', './js/terrain.js', './js/avatars.js', './js/main.js',
+  './js/game.js', './js/ai.js', './js/terrain.js', './js/input.js', './js/avatars.js', './js/main.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-192.png', './icons/maskable-512.png'
 ];
 self.addEventListener('install', e => {

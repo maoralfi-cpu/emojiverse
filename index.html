@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#5b3df5">
+<meta name="theme-color" content="#e5e9f0">
 <meta name="description" content="כובש – משחק כיבוש שטח, עובד בלי אינטרנט, בלי פרסומות">
 <meta name="flypod" content="none">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'">
@@ -62,6 +62,8 @@
     <div class="seg" id="fpsSeg"><button data-v="20">20</button><button data-v="30">30</button><button data-v="60">60</button></div>
     <div class="label">איכות תצוגה</div>
     <div class="seg" id="dprSeg"><button data-v="1">חסכונית</button><button data-v="2">חדה</button></div>
+    <div class="label">רגישות שליטה</div>
+    <div class="seg" id="sensSeg"><button data-v="low">נמוכה</button><button data-v="medium">בינונית</button><button data-v="high">גבוהה</button></div>
     <label class="check"><input type="checkbox" id="joyChk"> ג'ויסטיק על המסך (במקום גרירה)</label>
     <label class="check"><input type="checkbox" id="miniChk"> מפה קטנה</label>
     <label class="check"><input type="checkbox" id="vibChk"> רטט במוות</label>
@@ -80,7 +82,7 @@
       <li>אם מישהו נוגע בשובל שלך – נפסלת. נגעת בשובל של יריב – הוא נפסל.</li>
       <li>אסור לגעת בשובל של עצמך ובקצה המפה.</li>
       <li>ראש בראש: מי שבתוך השטח שלו שורד; מחוץ לשטח – בעל השובל הארוך נפסל.</li>
-      <li><b>טלפון:</b> גוררים את האצבע לכיוון הרצוי – הדמות מסתובבת אליו בעדינות (או ג'ויסטיק בהגדרות).</li>
+      <li><b>טלפון:</b> מניחים אצבע וגוררים לכיוון הרצוי – הדמות פונה מיד לכיוון שבין נקודת הנגיעה לאצבע (או ג'ויסטיק בהגדרות).</li>
       <li><b>מקלדת:</b> חיצים לכיוון (גם באלכסון), A/D לסיבוב, ‏P/Esc להשהיה.</li>
     </ul>
     <button id="helpBack" class="primary">הבנתי</button>
@@ -115,6 +117,7 @@
 <script src="js/game.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/terrain.js"></script>
+<script src="js/input.js"></script>
 <script src="js/avatars.js"></script>
 <script src="js/main.js"></script>
 </body>
