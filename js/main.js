@@ -648,5 +648,6 @@
     TICK_MS: TICK_MS
   };
   // חשיפה לבדיקות אוטומטיות בלבד
+  window.__evBooted = true;
   window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
 })();

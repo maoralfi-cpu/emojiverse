@@ -18,6 +18,8 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="bootFail" class="hidden"><div class="bootcard"><b>הדפדפן לא נתמך – פתחו ב-Chrome</b><p>אם פתחתם מוואטסאפ: ⋮ ← „פתח בדפדפן“ / Chrome. אם זה עדיין תקוע – עדכנו את Chrome ו-Android System WebView.</p><pre id="bootErr"></pre></div></div>
+<noscript><div class="bootfail"><div class="bootcard"><b>הדפדפן לא נתמך – פתחו ב-Chrome</b><p>צריך JavaScript כדי לשחק.</p></div></div></noscript>
 <canvas id="game"></canvas>
 
 <!-- HUD -->
@@ -198,6 +200,7 @@
   </div>
 </section>
 
+<script src="js/boot.js"></script>
 <script src="js/game.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/terrain.js"></script>

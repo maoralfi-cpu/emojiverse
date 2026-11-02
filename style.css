@@ -154,3 +154,9 @@ button:active{transform:scale(.97)}
 .cdot{display:inline-block;width:11px;height:11px;border-radius:50%;flex:0 0 11px;border:2px solid rgba(46,52,64,.35);box-sizing:border-box}
 #board li{border-inline-start:3px solid transparent;padding-inline-start:4px;border-radius:3px}
 #rankList .cdot{width:13px;height:13px;flex-basis:13px}
+
+/* אתחול: הודעת תקלה + גיבוי לדפדפנים ישנים (בלי clamp/dvh/:has) */
+.bootfail{position:fixed;inset:0;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#eceff4;padding:16px;box-sizing:border-box}
+.bootcard{max-width:420px;background:#fff;border-radius:16px;padding:18px;text-align:center;font-size:17px;line-height:1.5;box-shadow:0 4px 20px rgba(0,0,0,.12)}
+.bootcard pre{direction:ltr;text-align:left;font-size:10px;color:#888;white-space:pre-wrap;word-break:break-all;margin:8px 0 0}
+.card{min-width:0;max-width:100%;box-sizing:border-box}
