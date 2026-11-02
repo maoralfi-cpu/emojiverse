@@ -1,6 +1,9 @@
 /* Emojiverse – בדיקת אתחול: אם הקוד לא עלה תוך כמה שניות, או שנזרקה שגיאה – מציגים הודעה ברורה במקום מסך תקוע. */
 (function () {
   var errs = [];
+  var V = window.EV_VERSION || { app: '', build: '' };
+  function tag() { var t = document.getElementById('verTag'); if (t) t.textContent = V.app; }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tag); else tag();
   function box() { return document.getElementById('bootFail'); }
   function show() {
     var b = box(); if (!b) return;
@@ -32,7 +35,7 @@
   if (/[?&]diag/.test(location.search)) setTimeout(function () {
     var d = diag(), e = document.getElementById('bootErr'), b = box(); if (!b || !e) return;
     b.className = 'bootfail';
-    e.textContent = 'UA: ' + navigator.userAgent + '\nview ' + d.vw + 'x' + d.vh + ' dpr ' + window.devicePixelRatio + '\ncard ' + JSON.stringify(d.r) + '\nbooted ' + !!window.__evBooted + ' sw ' + !!(navigator.serviceWorker && navigator.serviceWorker.controller) + '\nnet ' + JSON.stringify(window.__evNet || {}) + ' rtc ' + !!window.RTCPeerConnection + '\nerrors: ' + (errs.join(' | ') || 'none');
+    e.textContent = 'version ' + V.app + ' build ' + V.build + '\nUA: ' + navigator.userAgent + '\nview ' + d.vw + 'x' + d.vh + ' dpr ' + window.devicePixelRatio + '\ncard ' + JSON.stringify(d.r) + '\nbooted ' + !!window.__evBooted + ' sw ' + !!(navigator.serviceWorker && navigator.serviceWorker.controller) + '\nnet ' + JSON.stringify(window.__evNet || {}) + ' rtc ' + !!window.RTCPeerConnection + '\nerrors: ' + (errs.join(' | ') || 'none');
     b.onclick = function () { b.className = 'hidden'; };
     if (!window.__diagT) window.__diagT = setInterval(function () { if (b.className === 'bootfail') { var d2 = diag(); e.textContent = e.textContent.replace(/\nnet [^\n]*/, '\nnet ' + JSON.stringify(window.__evNet || {}) + ' rtc ' + !!window.RTCPeerConnection); } }, 2000);
   }, 3000);

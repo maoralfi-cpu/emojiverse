@@ -15,6 +15,22 @@
     // שרתי ה-TURN הציבוריים שמגיעים כברירת מחדל עם ספריית PeerJS (פרטי גישה ציבוריים, בלי חשבון)
     { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478', 'turn:eu-0.turn.peerjs.com:3478?transport=tcp'], username: 'peerjs', credential: 'peerjsp' }
   ];
+  /* שרתי ICE נוספים בזמן ריצה (למשל TURN של Metered עם פרטי גישה זמניים):
+     ICE_URL מחזיר JSON שהוא מערך iceServers (או {iceServers:[…]}). נטען פעם אחת, עם תקרת 4 שניות; כישלון => ICE הבסיסי. */
+  var ICE_URL = window.EV_ICE_URL || '';
+  var iceLoad = null;
+  function loadIce() {
+    if (!ICE_URL || !window.fetch) return Promise.resolve();
+    if (iceLoad) return iceLoad;
+    iceLoad = Promise.race([
+      fetch(ICE_URL, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+        var extra = Array.isArray(j) ? j : (j && j.iceServers) || [];
+        if (extra.length) { ICE = ICE.concat(extra); dset('turn', 'extra ' + extra.length); }
+      }),
+      new Promise(function (res) { setTimeout(res, 4000); })
+    ]).catch(function () { iceLoad = null; dset('turn', 'fetch failed'); });
+    return iceLoad;
+  }
   var ERR_BROKER = 'אין חיבור לשרת התיאום. משחק אונליין צריך אינטרנט – בדקו את החיבור ונסו שוב.';
   var ERR_NET = 'החדר נמצא, אבל החיבור הישיר בין הטלפונים נכשל. כנראה הראוטר חוסם חיבור בין מכשירים (רשת אורחים / בידוד לקוחות). פתרון בטוח: המארח מפעיל נקודה חמה (Hotspot) בטלפון, השני מתחבר אליה, ונסו שוב.';
 
@@ -28,7 +44,8 @@
 
   // ---------- טעינת PeerJS לפי דרישה ----------
   var peerLoad = null;
-  function loadPeer() {
+  function loadPeer() { return loadIce().then(loadPeerJs); }
+  function loadPeerJs() {
     if (window.Peer) return Promise.resolve();
     if (peerLoad) return peerLoad;
     peerLoad = new Promise(function (res, rej) {
@@ -41,7 +58,7 @@
     return peerLoad;
   }
   function newPeer(id) {
-    var opts = { config: { iceServers: ICE }, debug: /pjdebug/.test(location.search) ? 3 : 0 };
+    var opts = { config: { iceServers: ICE.slice() }, debug: /pjdebug/.test(location.search) ? 3 : 0 };
     return id ? new window.Peer(id, opts) : new window.Peer(opts);
   }
   function send(c, msg) { try { if (c && c.open) c.send(typeof msg === 'string' || msg instanceof ArrayBuffer ? msg : JSON.stringify(msg)); } catch (e) {} }
@@ -180,7 +197,7 @@
       lobbyOpen = true; myKey = 'host';
       humans = [{ key: 'host', name: Net.cleanName(S.name) || 'מארח', avatar: 0, emoji: Emoji.valid(S.emoji) ? S.emoji : '', host: true, conn: null, pid: 0 }];
       inGame = false; showLobby(); keepAwake();
-      msg('lobbyMsg', 'שתפו את הקוד/הקישור (כפתור שיתוף) וחזרו מיד ל-Chrome – החדר פתוח רק כשהמסך הזה פתוח.');
+      msg('lobbyMsg', 'שתפו וחזרו ל-Chrome – החדר פתוח כשהמסך הזה פתוח');
     });
     me.on('connection', onClientConn);
     me.on('error', function (err) {

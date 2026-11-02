@@ -10,10 +10,15 @@ node test/logic.test.js >/dev/null || { echo "בדיקות הלוגיקה נכש
 node test/net.test.js >/dev/null || { echo "בדיקות הרשת נכשלו – לא פורסים"; exit 1; }
 node test/fx.test.js >/dev/null || { echo "בדיקות האפקטים נכשלו – לא פורסים"; exit 1; }
 STAMP=$(date +%Y%m%d%H%M%S)
+# גרסת אפליקציה: מעלים את המספר המשני בכל פריסה (./deploy.sh --no-bump כדי לא להעלות)
+APP=$(sed -n "s/.*app: 'v\([0-9]*\.[0-9]*\)'.*/\1/p" js/version.js)
+if [[ " $* " != *" --no-bump "* ]]; then APP="${APP%.*}.$(( ${APP#*.} + 1 ))"; fi
+sed -i "s/app: 'v[0-9.]*', build: '[^']*'/app: 'v${APP}', build: 'emojiverse-${STAMP}'/" js/version.js
+grep -q "v${APP}', build: 'emojiverse-${STAMP}'" js/version.js || { echo "עדכון גרסת האפליקציה נכשל"; exit 1; }
 sed -i "s/const VERSION = '[a-z]*-[^']*'/const VERSION = 'emojiverse-${STAMP}'/" sw.js
 grep -q "emojiverse-${STAMP}" sw.js || { echo "עדכון גרסת המטמון נכשל"; exit 1; }
 git add -A
-git -c user.name="maoralfi-cpu" -c user.email="maoralfi-cpu@users.noreply.github.com" commit -qm "פריסה emojiverse-${STAMP}" || true
+git -c user.name="maoralfi-cpu" -c user.email="maoralfi-cpu@users.noreply.github.com" commit -qm "פריסה v${APP} (emojiverse-${STAMP})" || true
 git push -q origin HEAD:main
 echo "נדחף ל-GitHub. ממתין לבניית Pages..."
 for i in $(seq 1 60); do
@@ -24,9 +29,9 @@ for f in "" manifest.webmanifest sw.js icons/icon-512.png js/mp.js js/net.js js/
   printf '%s %s\n' "$(curl -s -o /dev/null -w '%{http_code}' "$PAGES_URL/$f")" "$PAGES_URL/$f"
 done
 
-if [[ "${1:-}" == "--flypod" ]]; then
+if [[ " $* " == *" --flypod "* ]]; then
   rm -rf dist && mkdir dist && cp -r index.html style.css manifest.webmanifest sw.js js icons dist/
   if [[ -s .deploy-site ]]; then npx -y flypod@latest update dist --site "$(cat .deploy-site)"
   else npx -y flypod@latest dist; fi
 fi
-echo "גרסה: emojiverse-${STAMP}"
+echo "גרסה: v${APP} | מטמון: emojiverse-${STAMP}"

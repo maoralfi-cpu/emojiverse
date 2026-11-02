@@ -165,3 +165,7 @@ html.safe .screen{position:fixed;top:0;left:0;right:0;bottom:0;display:block;ove
 html.safe .screen.hidden{display:none!important}
 html.safe .card{display:block;margin:0 auto;max-width:480px;max-height:none;overflow:visible}
 html.safe .card>*{margin:6px 0}
+.vertag{position:absolute;left:8px;bottom:4px;font-size:10px;line-height:1;color:#4c566a;opacity:.45;pointer-events:none;z-index:1;font-variant-numeric:tabular-nums}
+#lobbyMsg{font-size:11px;margin:0;line-height:1.2}#lobbyMsg:empty{display:none}
+@media (max-height:700px) and (orientation:portrait){#shareLink{display:none}}
+@media (max-height:700px) and (orientation:portrait){#lobbyPlayers li{padding:0 8px 0 4px;margin:0}#lobbyPlayers .emo-s{font-size:15px}}
