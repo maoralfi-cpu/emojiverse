@@ -107,7 +107,7 @@
   /* דירוג סוף סיבוב: לפי שטח, ואז הריגות */
   function ranking(g) {
     return g.players.filter(function (p) { return !p.gone; }).map(function (p) {
-      return { id: p.id, name: p.name, avatar: p.avatar, color: p.color, isBot: p.isBot, pct: +g.pct(p).toFixed(1), best: +p.bestPct.toFixed(1), kills: p.kills };
+      return { id: p.id, name: p.name, emoji: p.emoji, avatar: p.avatar, color: p.color, isBot: p.isBot, pct: +g.pct(p).toFixed(1), best: +p.bestPct.toFixed(1), kills: p.kills };
     }).sort(function (a, b) { return b.pct - a.pct || b.kills - a.kills || b.best - a.best; });
   }
 

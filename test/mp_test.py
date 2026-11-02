@@ -92,16 +92,21 @@ with sync_playwright() as p:
     R['room_code'] = code
     join(c1, code, 2); join(c2, code, 3)
     wait(host, "document.querySelectorAll('#lobbyPlayers li').length===3")
-    # בחירת דמות תפוסה מושבתת אצל המצטרף
-    R['taken_avatar_disabled'] = ev(c2, "[...document.querySelectorAll('#lobbyAvatars button')].filter(b=>b.disabled).length") == 2
-    c2.click('#lobbyAvatars button:nth-child(6)'); c2.wait_for_timeout(700)
-    R['avatar_pick_synced'] = ev(host, "document.querySelectorAll('#lobbyAvatars button')[5].textContent") == 'איתי'
+    # אימוג'י: נועה בוחרת 🦊 => אצל איתי הוא מושבת; איתי בוחר 🐸 => המארח רואה; המארח נשאר על 🎲 אקראי
+    c1.click('#lobbyAvatars button[data-e="🦊"]'); c1.wait_for_timeout(700)
+    R['taken_avatar_disabled'] = ev(c2, "document.querySelector('#lobbyAvatars button[data-e=\"🦊\"]').disabled") is True
+    c2.click('#lobbyAvatars button[data-e="🐸"]'); c2.wait_for_timeout(700)
+    R['avatar_pick_synced'] = '🐸איתי' in ev(host, "document.getElementById('lobbyPlayers').textContent").replace(' ', '')
+    R['host_random_default'] = ev(host, "document.querySelector('#lobbyAvatars button.on').dataset.e") == ''
     R['client_sees_bots_cfg'] = ev(c1, "document.querySelector('#mpBotsSeg button.on').dataset.v") == '2'
     host.screenshot(path=os.path.join(ROOT, 'test', 'lobby.png'))
     host.click('#startBtn')
     for pg in (c1, c2): wait(pg, "window.__kovesh.state==='play' && window.__kovesh.game && window.__kovesh.game.players.some(p=>p.alive)")
     hs = state(host); s1 = state(c1)
     R['roster'] = [pp['name'] for pp in hs['players']]
+    emos = ev(host, "window.__kovesh.game.players.map(p=>p.emoji)")
+    R['emojis'] = emos
+    R['emojis_unique_and_picked'] = len(set(emos)) == len(emos) and emos[1] == '🦊' and emos[2] == '🐸' and ev(c1, "window.__kovesh.game.players.map(p=>p.emoji).join()") == ','.join(emos)
     R['players_total_ok'] = hs['n'] == 5 and s1['n'] == 5
     # תנועה: נגיעה אצל נועה => הכיוון במארח משתנה
     c1.touchscreen.tap(CX - 150, CY); c1.wait_for_timeout(300)
@@ -180,6 +185,6 @@ with sync_playwright() as p:
 if srv: srv.kill()
 R['console_errors'] = errors
 print(json.dumps(R, ensure_ascii=False, indent=1))
-keys = ['taken_avatar_disabled', 'avatar_pick_synced', 'client_sees_bots_cfg', 'players_total_ok', 'client_input_reaches_host', 'sync_ok', 'pause_resume_ok', 'disconnect_removed', 'disconnect_synced_to_client', 'results_client_same', 'again_btn_host_only', 'next_round_ok', 'nobots_ok', 'solo_no_network']
+keys = ['emojis_unique_and_picked', 'host_random_default', 'taken_avatar_disabled', 'avatar_pick_synced', 'client_sees_bots_cfg', 'players_total_ok', 'client_input_reaches_host', 'sync_ok', 'pause_resume_ok', 'disconnect_removed', 'disconnect_synced_to_client', 'results_client_same', 'again_btn_host_only', 'next_round_ok', 'nobots_ok', 'solo_no_network']
 bad = [k for k in keys if not R.get(k)]
 print('PASS' if not bad and not errors else 'FAIL ' + ','.join(bad))

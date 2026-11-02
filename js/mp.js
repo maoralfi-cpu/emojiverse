@@ -100,23 +100,23 @@
     $('shareBox').classList.toggle('hidden', false);
     var mine = L.players.filter(function (p) { return p.key === myKey; })[0];
     if (document.activeElement !== $('lobbyName')) $('lobbyName').value = mine ? mine.name : S.name || '';
-    // דמויות – תפוסות מושבתות
+    // אימוג'י – כל אחד לשחקן אחד; תפוסים באפור. 🎲 = אקראי בתחילת הסיבוב
     var av = $('lobbyAvatars'); av.innerHTML = '';
-    Avatars.list.forEach(function (a, i) {
-      var owner = L.players.filter(function (p) { return p.avatar === i; })[0];
-      var b = document.createElement('button');
-      var img = new Image(); img.src = Avatars.dataURL(i, 72, a.color); img.alt = a.name;
-      b.appendChild(img); b.appendChild(document.createTextNode(owner ? owner.name : a.name));
-      if (owner && owner.key === myKey) b.classList.add('on');
-      else if (owner) { b.disabled = true; b.classList.add('taken'); }
-      b.onclick = function () { pickAvatar(i); };
+    var myEmo = mine ? mine.emoji : '';
+    [''].concat(Emoji.LIST).forEach(function (e) {
+      var owner = e ? L.players.filter(function (p) { return p.emoji === e; })[0] : null;
+      var b = document.createElement('button'); b.type = 'button';
+      b.className = 'emo' + (e ? '' : ' rnd') + (e === myEmo ? ' on' : '');
+      b.textContent = e || '🎲 אקראי'; b.dataset.e = e;
+      if (owner && owner.key !== myKey) { b.disabled = true; b.classList.add('taken'); b.title = owner.name; }
+      b.onclick = function () { pickEmoji(e); };
       av.appendChild(b);
     });
     var ul = $('lobbyPlayers'); ul.innerHTML = '';
     L.players.forEach(function (p) {
       var li = document.createElement('li');
-      var img = new Image(); img.src = Avatars.dataURL(p.avatar, 48, Avatars.list[p.avatar].color); img.alt = '';
-      li.appendChild(img); li.appendChild(document.createTextNode(p.name + (p.host ? ' (מארח)' : '') + (p.key === myKey ? ' – את/ה' : '')));
+      var em = document.createElement('span'); em.className = 'emo-s'; em.textContent = p.emoji || '🎲';
+      li.appendChild(em); li.appendChild(document.createTextNode(p.name + (p.host ? ' (מארח)' : '') + (p.key === myKey ? ' – את/ה' : '')));
       ul.appendChild(li);
     });
     $('lobbyCount').textContent = L.players.length + '/' + MAX_HUMANS;
@@ -131,10 +131,12 @@
     msg('startHint', isHost ? (L.players.length + L.cfg.bots < 2 ? 'מחכים לשחקן נוסף (או בחרו בוטים)' : '') : '');
   }
   function showLobby() { Core.show('lobby'); if (role === 'host') pushLobby(); else if (lobbyState) renderLobby(lobbyState); }
-  function pickAvatar(i) {
-    if (role === 'host') { if (!humans.some(function (h) { return h.avatar === i && h !== humans[0]; })) { humans[0].avatar = i; S.avatar = i; Core.save(); pushLobby(); } }
-    else { S.avatar = i; Core.save(); send(conn, { t: 'pick', avatar: i }); }
+  function pickEmoji(e) {
+    S.emoji = e; Core.save();
+    if (role === 'host') { if (emojiFree(e, humans[0])) humans[0].emoji = e; pushLobby(); }
+    else send(conn, { t: 'pick', emoji: e });
   }
+  function emojiFree(e, self) { return e === '' || Emoji.valid(e) && !humans.some(function (h) { return h !== self && h.emoji === e; }); }
 
   // ================= מארח =================
   function startHost() {
@@ -146,7 +148,7 @@
     peer = newPeer(PREFIX + code);
     peer.on('open', function () {
       myKey = 'host';
-      humans = [{ key: 'host', name: Net.cleanName(S.name) || 'מארח', avatar: S.avatar % Avatars.list.length, host: true, conn: null, pid: 0 }];
+      humans = [{ key: 'host', name: Net.cleanName(S.name) || 'מארח', avatar: 0, emoji: Emoji.valid(S.emoji) ? S.emoji : '', host: true, conn: null, pid: 0 }];
       inGame = false; showLobby();
     });
     peer.on('connection', onClientConn);
@@ -159,7 +161,7 @@
     peer.on('disconnected', function () { if (role === 'host' && !leaving) try { peer.reconnect(); } catch (e) {} }); // נשארים זמינים להצטרפות
   }
   function lobbyView() {
-    return { players: humans.map(function (h) { return { key: h.key, name: h.name, avatar: h.avatar, host: !!h.host }; }), cfg: cfg, code: code };
+    return { players: humans.map(function (h) { return { key: h.key, name: h.name, avatar: h.avatar, emoji: h.emoji, host: !!h.host }; }), cfg: cfg, code: code };
   }
   function pushLobby() {
     var L = lobbyView();
@@ -185,12 +187,13 @@
       var m; try { m = JSON.parse(d); } catch (e) { return; }
       if (m.t === 'hello' && !h) {
         if (humans.length >= MAX_HUMANS) { send(c, { t: 'reject', why: 'החדר מלא (עד ' + MAX_HUMANS + ' שחקנים).' }); setTimeout(function () { c.close(); }, 300); return; }
-        h = { key: c.peer, name: Net.cleanName(m.name) || ('שחקן ' + (humans.length + 1)), avatar: freeAvatar(m.avatar), conn: c, pid: 0 };
+        h = { key: c.peer, name: Net.cleanName(m.name) || ('שחקן ' + (humans.length + 1)), avatar: freeAvatar(), emoji: '', conn: c, pid: 0 };
+        if (emojiFree(m.emoji, h) && m.emoji) h.emoji = m.emoji;
         humans.push(h);
         if (inGame) joinMidGame(h); else pushLobby();
       } else if (!h) return;
       else if (m.t === 'name') { h.name = Net.cleanName(m.name) || h.name; if (!inGame) pushLobby(); }
-      else if (m.t === 'pick') { if (!inGame && freeAvatar(m.avatar) === m.avatar) { h.avatar = m.avatar; } pushLobby(); }
+      else if (m.t === 'pick') { if (!inGame && typeof m.emoji === 'string' && emojiFree(m.emoji, h)) h.emoji = m.emoji; pushLobby(); }
     });
     c.on('close', function () { if (h) dropHuman(h); });
     c.on('error', function () { if (h) dropHuman(h); });
@@ -201,20 +204,23 @@
     var g = Core.game;
     if (inGame && g && h.pid) {
       var p = g.players[h.pid - 1];
-      if (p && !p.gone) { p.gone = true; if (p.alive) g.kill(p, null, 'left'); else { Core.feed(p.name + ' עזב/ה את המשחק'); broadcast({ t: 'ev', k: 'left', v: p.id }); } clearTerritory(g, p); }
+      if (p && !p.gone) { p.gone = true; if (p.alive) g.kill(p, null, 'left'); else { Core.feed(Core.nm(p) + ' עזב/ה את המשחק'); broadcast({ t: 'ev', k: 'left', v: p.id }); } clearTerritory(g, p); }
     }
     if (!inGame) pushLobby();
   }
   function clearTerritory(g, p) { if (g.counts[p.id] > 0) for (var j = 0; j < g.owner.length; j++) if (g.owner[j] === p.id) g.setOwner(j, 0); }
-  function roster(g) { return g.players.map(function (p) { return { name: p.name, avatar: p.avatar, color: p.color, isBot: p.isBot, gone: !!p.gone }; }); }
+  function roster(g) { return g.players.map(function (p) { return { name: p.name, avatar: p.avatar, emoji: p.emoji, color: p.color, isBot: p.isBot, gone: !!p.gone }; }); }
   function hostStart() {
     var used = humans.map(function (h) { return h.avatar; }), free = [];
     for (var i = 0; i < Avatars.list.length; i++) if (used.indexOf(i) < 0) free.push(i);
-    var list = humans.map(function (h) { return { name: h.name, avatar: h.avatar, color: Avatars.list[h.avatar].color, isBot: false }; });
+    // מי שלא בחר אימוג'י מקבל אקראי שלא בשימוש; גם הבוטים
+    var usedE = humans.map(function (h) { return h.emoji; }).filter(Boolean);
+    var list = humans.map(function (h) { var e = h.emoji || Emoji.randomFree(usedE); if (!h.emoji) usedE.push(e); return { name: h.name, avatar: h.avatar, emoji: e, color: Avatars.list[h.avatar].color, isBot: false }; });
     var extra = EXTRA_COLORS.slice();
     for (var b = 0; b < cfg.bots; b++) {
       var av = free.length ? free[b % free.length] : b % Avatars.list.length;
-      list.push({ name: BOT_NAMES[b] + ' 🤖', avatar: av, color: b < free.length ? Avatars.list[av].color : extra.shift(), isBot: true });
+      var be = Emoji.randomFree(usedE); usedE.push(be);
+      list.push({ name: BOT_NAMES[b] + ' 🤖', emoji: be, avatar: av, color: b < free.length ? Avatars.list[av].color : extra.shift(), isBot: true });
     }
     humans.forEach(function (h, k) { h.pid = k + 1; });
     var size = list.length <= 3 ? 80 : list.length <= 7 ? 100 : 130;    // מפה לפי מספר המשתתפים
@@ -226,7 +232,8 @@
   }
   function joinMidGame(h) {
     var g = Core.game; if (!g) return;
-    var p = Core.addMatchPlayer({ name: h.name, avatar: h.avatar, color: Avatars.list[h.avatar].color, isBot: false }, true);
+    var usedNow = g.players.filter(function (q) { return !q.gone; }).map(function (q) { return q.emoji; });
+    var p = Core.addMatchPlayer({ name: h.name, avatar: h.avatar, emoji: h.emoji && usedNow.indexOf(h.emoji) < 0 ? h.emoji : Emoji.randomFree(usedNow), color: Avatars.list[h.avatar].color, isBot: false }, true);
     h.pid = p.id;
     humans.forEach(function (o) { if (o.conn && o !== h) send(o.conn, { t: 'roster', roster: roster(g) }); });
     send(h.conn, { t: 'start', size: g.W, roster: roster(g), you: h.pid, roundMs: Core.match.roundMs, diff: cfg.diff, mid: true });
@@ -266,7 +273,7 @@
     var myPid = role === 'host' ? 1 : myId;
     (rank || []).forEach(function (r, i) {
       var li = document.createElement('li');
-      var img = new Image(); img.src = Avatars.dataURL(r.avatar, 48, r.color); img.alt = '';
+      var img = document.createElement('span'); img.className = 'emo-s'; img.textContent = r.emoji || '🙂';
       var medal = ['🥇', '🥈', '🥉'][i] || (i + 1) + '.';
       li.appendChild(document.createTextNode(medal + ' ')); li.appendChild(img);
       var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name; li.appendChild(nm);
@@ -292,7 +299,7 @@
         conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'raw' });
         clearTimeout(connectTimer);
         connectTimer = setTimeout(function () { if (role === 'client' && !(conn && conn.open)) { failClient(ERR_NET); } }, 20000);
-        conn.on('open', function () { clearTimeout(connectTimer); send(conn, { t: 'hello', name: Net.cleanName(S.name), avatar: S.avatar, v: 5 }); msg('onlineMsg', 'מחובר! מחכים ללובי…'); });
+        conn.on('open', function () { clearTimeout(connectTimer); send(conn, { t: 'hello', name: Net.cleanName(S.name), emoji: Emoji.valid(S.emoji) ? S.emoji : '', v: 5 }); msg('onlineMsg', 'מחובר! מחכים ללובי…'); });
         conn.on('data', onHostData);
         conn.on('close', function () { if (!leaving && role === 'client') hostGone(); });
         conn.on('error', function () { if (!leaving && role === 'client' && !conn.open) failClient(ERR_NET); });
@@ -357,13 +364,13 @@
     else if (m.t === 'ev') {
       var g2 = Core.game; if (!g2) return;
       var v = g2.players[m.v - 1]; if (!v) return;
-      if (m.k === 'left') { Core.feed(v.name + ' עזב/ה את המשחק'); return; }
+      if (m.k === 'left') { Core.feed(Core.nm(v) + ' עזב/ה את המשחק'); return; }
       var by = m.by ? g2.players[m.by - 1] : null;
       Core.effect(v.x, v.y, v.color);
-      if (m.r === 'left') { Core.feed(v.name + ' עזב/ה את המשחק'); v.gone = true; return; }
+      if (m.r === 'left') { Core.feed(Core.nm(v) + ' עזב/ה את המשחק'); v.gone = true; return; }
       if (v === Core.me) Core.myDeath({ reason: m.r, killer: by });
-      else if (by === Core.me) Core.feed('הבסת את ' + v.name + '! ⚔️');
-      else if (by) Core.feed(by.name + ' הביס את ' + v.name);
+      else if (by === Core.me) Core.feed('הבסת את ' + Core.nm(v) + '! ⚔️');
+      else if (by) Core.feed(Core.nm(by) + ' הביס את ' + Core.nm(v));
     }
     else if (m.t === 'pause') { if (Core.mode === 'client') netMessage('המשחק מושהה', m.why === 'bg' ? 'המארח יצא מהאפליקציה – המשחק מושהה עד שיחזור.' : 'המארח השהה את המשחק.', false); }
     else if (m.t === 'resume') { hideOverlay(); }

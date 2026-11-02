@@ -22,8 +22,15 @@ try:
         pg.on('request', lambda r: reqs.append(r.url))
         pg.goto(url, wait_until='load')
         pg.screenshot(path=os.path.join(ROOT, 'test', 'menu.png'))
+        results['emoji_picker_count'] = pg.evaluate("document.querySelectorAll('#avatarPick button.emo').length")
+        results['emoji_default_random'] = pg.evaluate("document.querySelector('#avatarPick button.on').classList.contains('rnd')")
         pg.click('#avatarPick button:nth-child(3)')
+        results['emoji_saved'] = pg.evaluate("JSON.parse(localStorage.getItem('kovesh.settings')).emoji")
+        pg.evaluate("document.getElementById('avatarPick').scrollIntoView({block:'center'})")
+        pg.screenshot(path=os.path.join(ROOT, 'test', 'emoji_picker.png'))
         pg.click('#playBtn')
+        results['me_emoji'] = pg.evaluate('window.__kovesh.me.emoji')
+        results['bot_emojis_unique'] = pg.evaluate("(()=>{const e=window.__kovesh.game.players.map(p=>p.emoji);return new Set(e).size===e.length})()")
         # משחק: לולאה עם חיצים מוחזקים כדי לכבוש שטח
         for k, ms in [('ArrowRight', 900), ('ArrowDown', 900), ('ArrowLeft', 900), ('ArrowUp', 1100)]:
             pg.keyboard.down(k); pg.wait_for_timeout(ms); pg.keyboard.up(k)
@@ -99,5 +106,5 @@ errors = [e for e in errors if e not in blocked]
 results['csp_blocked_third_party'] = len(blocked)
 results['console_errors'] = errors
 print(json.dumps(results, ensure_ascii=False, indent=1))
-ok = results.get('drag_ok') and 45 <= results.get('render_fps', 0) <= 66 and not errors and results.get('pause_stops_ticks') and results.get('over_visible') and not results['external_requests']
+ok = results.get('emoji_picker_count', 0) >= 37 and results.get('emoji_default_random') and results.get('me_emoji') == results.get('emoji_saved') == '🦊' and results.get('bot_emojis_unique') and results.get('drag_ok') and 45 <= results.get('render_fps', 0) <= 66 and not errors and results.get('pause_stops_ticks') and results.get('over_visible') and not results['external_requests']
 print('PASS' if ok else 'FAIL'); sys.exit(0 if ok else 1)

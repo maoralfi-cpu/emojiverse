@@ -71,3 +71,12 @@ button:active{transform:scale(.97)}
 #hostCfg.readonly .seg button{cursor:default}
 #hostCfg.readonly .seg button:not(.on){opacity:.6}
 #timer{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(251,252,254,.9);color:#3b4252;border:1px solid rgba(76,86,106,.15);border-radius:12px;padding:3px 12px;font-weight:800;font-size:18px;font-variant-numeric:tabular-nums}
+
+/* v6: בוחר אימוג'י */
+#avatarPick,.avgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;max-height:228px;overflow:auto;padding:2px}
+#avatarPick button.emo,.avgrid button.emo{margin:0;padding:6px 0;font-size:28px;line-height:1.15;background:#f0f3f7;border:3px solid transparent;border-radius:14px;font-family:"Samsung Color Emoji","Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif}
+#avatarPick button.emo.rnd,.avgrid button.emo.rnd{grid-column:span 2;font-size:16px;font-weight:700;color:#4c566a;font-family:inherit}
+#avatarPick button.emo.on,.avgrid button.emo.on{border-color:#5e81ac;background:#e3eaf3}
+#avatarPick button.emo.taken,.avgrid button.emo.taken{opacity:.3;filter:grayscale(1)}
+.emo-s{font-size:16px;width:22px;text-align:center;display:inline-block}
+#lobbyPlayers .emo-s,#rankList .emo-s{font-size:24px;width:32px}

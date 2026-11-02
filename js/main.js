@@ -6,9 +6,10 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------- הגדרות ושיאים ----------
-  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 4, mini: true, vib: true, sens: 'medium' };
+  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 6, emoji: '', mini: true, vib: true, sens: 'medium' };
   var S = load('kovesh.settings', DEFAULTS);
   if ((S.v || 0) < 4) { S.ctrl = S.joy ? 'joy' : 'point'; if (S.fps < 60) S.fps = 60; S.v = 4; save('kovesh.settings', S); } // מעבר ל-v4
+  if ((S.v || 0) < 6) { S.emoji = ''; S.v = 6; save('kovesh.settings', S); } // v6: דמויות אימוג'י – הבחירה הישנה => אקראי
   var BEST = load('kovesh.best', { pct: 0, kills: 0 });
   function load(k, def) {
     try { var v = JSON.parse(localStorage.getItem(k)); return Object.assign({}, def, v || {}); } catch (e) { return Object.assign({}, def); }
@@ -45,14 +46,14 @@
   $('nameInput').value = S.name;
   $('miniChk').checked = S.mini; $('vibChk').checked = S.vib;
 
+  /* בוחר אימוג'י: 🎲 אקראי (ברירת מחדל) + רשימה. נשמר ב-localStorage */
   function buildAvatarPick() {
     var el = $('avatarPick'); el.innerHTML = '';
-    Avatars.list.forEach(function (a, i) {
-      var b = document.createElement('button');
-      var img = new Image(); img.src = Avatars.dataURL(i, 96, a.color); img.alt = a.name;
-      b.appendChild(img); b.appendChild(document.createTextNode(a.name));
-      if (i === S.avatar) b.classList.add('on');
-      b.addEventListener('click', function () { S.avatar = i; save('kovesh.settings', S); buildAvatarPick(); });
+    [''].concat(Emoji.LIST).forEach(function (e) {
+      var b = document.createElement('button'); b.type = 'button';
+      b.className = 'emo' + (e === (S.emoji || '') ? ' on' : '') + (e ? '' : ' rnd');
+      b.textContent = e || '🎲 אקראי'; b.setAttribute('aria-label', e || 'אקראי');
+      b.addEventListener('click', function () { S.emoji = e; save('kovesh.settings', S); buildAvatarPick(); });
       el.appendChild(b);
     });
   }
@@ -108,8 +109,9 @@
     S.name = $('nameInput').value.trim(); save('kovesh.settings', S);
     g = new Game({ size: S.size });
     startBest = { pct: BEST.pct, kills: BEST.kills };
-    var myAv = S.avatar % Avatars.list.length, myCol = Avatars.list[myAv].color;
-    me = g.addPlayer({ name: S.name || 'אני', avatar: myAv, color: myCol });
+    var myAv = 0, myCol = Avatars.list[myAv].color;   // צבעי השטח – פלטת הפסטל הנורדי
+    var myEmo = Emoji.valid(S.emoji) ? S.emoji : Emoji.randomFree([]), usedEmo = [myEmo];
+    me = g.addPlayer({ name: S.name || 'אני', avatar: myAv, color: myCol, emoji: myEmo });
     var freeAv = []; for (var i = 0; i < Avatars.list.length; i++) if (i !== myAv) freeAv.push(i);
     shuffle(freeAv);
     var names = BOT_NAMES.slice(); shuffle(names);
@@ -118,7 +120,8 @@
       var av = freeAv[b % freeAv.length];
       // דמות שחוזרת פעמיים מקבלת צבע אחר
       var col = b < freeAv.length ? Avatars.list[av].color : extra.shift();
-      g.addPlayer({ name: names[b], isBot: true, avatar: av, color: col });
+      var be = Emoji.randomFree(usedEmo); usedEmo.push(be);
+      g.addPlayer({ name: names[b], isBot: true, avatar: av, color: col, emoji: be });
     }
     styleAll();
     g.spawn(me, { x: g.W / 2, y: g.W / 2 });
@@ -136,7 +139,7 @@
     trailCss[p.id] = css(saturate(c, 1.45, 0.9), 0.9);                 // אותו גוון, רווי יותר
     darkCss[p.id] = css(mix(c, SLATE, 0.3), 0.55);                     // צל רך
     lineCss[p.id] = css(mix(c, SLATE, p === me ? 0.45 : 0.25));        // קו מתאר כהה יותר באותו גוון
-    avatarURLs[p.id] = Avatars.dataURL(p.avatar, 64, p.color);
+    avatarURLs[p.id] = Emoji.dataURL(p.emoji, 64, p.color, lineCss[p.id]);
     p.blinkAt = performance.now() + 1000 + Math.random() * 3000;
   }
   function beginPlay() {
@@ -286,16 +289,17 @@
       if (mode === 'host' && MPH) MPH.onEvent(ev);
       if (v === me && mode === 'solo') { gameOver(ev); return; }
       if (v === me) { myDeath(ev); return; }
-      if (ev.reason === 'left') { feed(v.name + ' עזב/ה את המשחק'); return; }
-      if (ev.killer === me) feed('הבסת את ' + v.name + '! ⚔️');
-      else if (ev.killer) feed(ev.killer.name + ' הביס את ' + v.name);
+      if (ev.reason === 'left') { feed(nm(v) + ' עזב/ה את המשחק'); return; }
+      if (ev.killer === me) feed('הבסת את ' + nm(v) + '! ⚔️');
+      else if (ev.killer) feed(nm(ev.killer) + ' הביס את ' + nm(v));
     }
   }
   function myDeath(ev) {
     if (S.vib && navigator.vibrate) try { navigator.vibrate(150); } catch (e) {}
     var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש' };
-    feed('נפסלת (' + (reasons[ev.reason] || '') + (ev.killer ? ' – ' + ev.killer.name : '') + ') · חוזרים בעוד 3 שניות');
+    feed('נפסלת (' + (reasons[ev.reason] || '') + (ev.killer ? ' – ' + nm(ev.killer) : '') + ') · חוזרים בעוד 3 שניות');
   }
+  function nm(p) { return (p.emoji ? p.emoji + ' ' : '') + p.name; }
   function feed(msg) {
     var el = document.createElement('div'); el.textContent = msg;
     var f = $('feed'); f.insertBefore(el, f.firstChild);
@@ -310,7 +314,7 @@
     canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
     updateZoom(0);
     if (drag) drag.setCenter(W / 2, H / 2);
-    Avatars.clear();
+    Avatars.clear(); Emoji.clear();
     layer = null;
     if (state === 'paused' || state === 'over') render(1, performance.now());
   }
@@ -415,7 +419,7 @@
       var head = p.rh;
       var blink = 0;
       if (now > p.blinkAt) { var bt = (now - p.blinkAt) / 140; if (bt >= 1) p.blinkAt = now + 2000 + Math.random() * 3500; else blink = Math.sin(bt * Math.PI); }
-      Avatars.draw(ctx, p.avatar, p.color, hx, hy, size, head, 1, blink);
+      Emoji.draw(ctx, p.emoji, p.color, lineCss[p.id], hx, hy, size, head);
       ctx.lineWidth = Math.max(2, fontPx * 0.3); ctx.strokeStyle = 'rgba(255,255,255,.85)';
       ctx.strokeText(p.name, hx, hy - size * 0.62);
       ctx.fillStyle = '#3b4252'; ctx.fillText(p.name, hx, hy - size * 0.62);
@@ -442,7 +446,7 @@
       lastBoardKey = key;
       var html = '';
       list.forEach(function (p) {
-        html += '<li class="' + (p === me ? 'me' : '') + '"><img src="' + avatarURLs[p.id] + '" alt="">' + esc(p.name) + '<span class="p">' + g.pct(p).toFixed(1) + '%</span></li>';
+        html += '<li class="' + (p === me ? 'me' : '') + '"><span class="emo-s">' + p.emoji + '</span>' + esc(p.name) + '<span class="p">' + g.pct(p).toFixed(1) + '%</span></li>';
       });
       $('board').innerHTML = html;
     }
@@ -451,7 +455,10 @@
       var mw = mini.width;
       mctx.clearRect(0, 0, mw, mw); mctx.imageSmoothingEnabled = true;
       mctx.drawImage(mm, 0, 0, mw, mw);
-      if (me.alive) { mctx.fillStyle = '#2e3440'; mctx.strokeStyle = '#fff'; mctx.lineWidth = 1.5; mctx.beginPath(); mctx.arc(me.x / g.W * mw, me.y / g.W * mw, 3.5, 0, 7); mctx.fill(); mctx.stroke(); }
+      // מקרא: האימוג'י של כל שחקן במיקומו (sprite קטן, בלי fillText)
+      for (var q = 0; q < g.players.length; q++) { var pp = g.players[q]; if (!pp.alive || pp === me) continue;
+        var sp = Emoji.badge(pp.emoji, 15, pp.color, lineCss[pp.id]); mctx.drawImage(sp, pp.x / g.W * mw - 7.5, pp.y / g.W * mw - 7.5); }
+      if (me.alive) { var ms = Emoji.badge(me.emoji, 19, me.color, "#2e3440"); mctx.drawImage(ms, me.x / g.W * mw - 9.5, me.y / g.W * mw - 9.5); }
     }
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -486,9 +493,9 @@
     save('kovesh.best', BEST);
     var reasons = { wall: 'נתקלת בקצה המפה', self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש' };
     var r = reasons[ev.reason] || '';
-    if (ev.killer) r += ' – ' + ev.killer.name;
+    if (ev.killer) r += ' – ' + nm(ev.killer);
     $('overReason').textContent = r;
-    $('overAvatar').src = Avatars.dataURL(me.avatar, 160, me.color);
+    $('overAvatar').src = Emoji.dataURL(me.emoji, 160, me.color, lineCss[me.id]);
     $('overPct').textContent = best.toFixed(1) + '%';
     $('overKills').textContent = kills;
     $('overTitle').textContent = (best > startBest.pct || kills > startBest.kills) ? 'שיא חדש! 🏆' : 'נפסלת!';
@@ -573,7 +580,7 @@
     settings: S, save: function () { save('kovesh.settings', S); },
     startMatch: startMatch, addMatchPlayer: addMatchPlayer, endRound: endRound, toMenu: toMenu, show: show, feed: feed,
     effect: function (x, y, color) { effects.push({ x: x, y: y, color: color, t0: performance.now() }); },
-    myDeath: myDeath, stopLoop: stopLoop, startLoop: function () { if (state === 'play') startLoop(); },
+    myDeath: myDeath, nm: nm, stopLoop: stopLoop, startLoop: function () { if (state === 'play') startLoop(); },
     setState: function (st) { state = st; }, resize: resize,
     get game() { return g; }, get me() { return me; }, get state() { return state; }, get mode() { return mode; }, get match() { return match; },
     TICK_MS: TICK_MS
