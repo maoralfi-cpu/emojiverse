@@ -214,3 +214,7 @@ test/                       בדיקות
 - ICE: STUN של Google ו-Cloudflare, TURN של PeerJS ב-UDP וב-TCP. מצב ICE וסוגי מועמדים מוצגים ב-?diag.
 - מספר גרסה: `js/version.js` (`app` + `build`). `deploy.sh` מעלה את המספר המשני בכל פריסה (`--no-bump` כדי לא להעלות) ומטביע את מזהה המטמון. הגרסה מוצגת בקטן בפינת מסך הפתיחה ובתיבת `?diag`.
 - TURN בזמן ריצה: `window.EV_ICE_URL` (או `ICE_URL` ב-js/mp.js) – כתובת שמחזירה מערך iceServers / `{iceServers:[…]}`; מתווסף לשרתים הבסיסיים. צריך להוסיף את הדומיין ל-`connect-src` ב-CSP שב-index.html.
+
+## v9.3 – Metered TURN
+- ICE: Metered (חשבון חינמי) ראשון – פרטי גישה נטענים מ-`https://emojiverse.metered.live/api/v1/turn/credentials?apiKey=…` (מפתח צד-לקוח), ואם נכשל – פרטי גישה קבועים. אחריו STUN של Google, ו-TURN הציבורי של PeerJS אחרון.
+- ה-relay משמש רק כשחיבור ישיר נכשל (בלי relay כפוי) – חוסך מכסה. ב-`?diag`: `turn` (metered/static), `relay` (נאסף מועמד relay) ו-`pair` (סוג הזוג שהתחבר).

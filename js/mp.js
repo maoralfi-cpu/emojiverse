@@ -10,25 +10,35 @@
   var PREFIX = 'kovesh-v5-', MAX_HUMANS = 6, SNAP_EVERY = 3; // 60/3 = 20 תמונות בשנייה
   var BOT_NAMES = ['שועל', 'נמר', 'ינשוף', 'דב', 'זאב', 'צבי'];
   var EXTRA_COLORS = ['#c98a96', '#8e9bb3', '#c2b48a', '#a3b8a0', '#b49fc4', '#c4a48f'];
-  var ICE = [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
-    // שרתי ה-TURN הציבוריים שמגיעים כברירת מחדל עם ספריית PeerJS (פרטי גישה ציבוריים, בלי חשבון)
-    { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478', 'turn:eu-0.turn.peerjs.com:3478?transport=tcp'], username: 'peerjs', credential: 'peerjsp' }
+  /* ICE: Metered TURN (חשבון חינמי של מאור) ראשון, אחר כך STUN של Google, ו-TURN הציבורי של PeerJS אחרון.
+     ה-relay משמש רק כשחיבור ישיר נכשל (ברירת המחדל של ICE, בלי iceTransportPolicy:'relay').
+     ICE_URL מחזיר מערך iceServers עם פרטי גישה עדכניים; אם נכשל – METERED_STATIC. מפתח צד-לקוח ציבורי. */
+  var ICE_URL = window.EV_ICE_URL || 'https://emojiverse.metered.live/api/v1/turn/credentials?apiKey=5ab3cef5e777ab657b13e4b47d36008f7224';
+  var MU = '08ae2b73f5e9229d55415719', MC = 'y6FuEwJJpPGrjEo2';
+  var METERED_STATIC = [
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    { urls: 'turn:global.relay.metered.ca:80', username: MU, credential: MC },
+    { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: MU, credential: MC },
+    { urls: 'turn:global.relay.metered.ca:443', username: MU, credential: MC },
+    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: MU, credential: MC }
   ];
-  /* שרתי ICE נוספים בזמן ריצה (למשל TURN של Metered עם פרטי גישה זמניים):
-     ICE_URL מחזיר JSON שהוא מערך iceServers (או {iceServers:[…]}). נטען פעם אחת, עם תקרת 4 שניות; כישלון => ICE הבסיסי. */
-  var ICE_URL = window.EV_ICE_URL || '';
+  var ICE_REST = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }
+  ];
+  var ICE = METERED_STATIC.concat(ICE_REST);
   var iceLoad = null;
   function loadIce() {
     if (!ICE_URL || !window.fetch) return Promise.resolve();
     if (iceLoad) return iceLoad;
+    dset('turn', 'static');
     iceLoad = Promise.race([
-      fetch(ICE_URL, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
-        var extra = Array.isArray(j) ? j : (j && j.iceServers) || [];
-        if (extra.length) { ICE = ICE.concat(extra); dset('turn', 'extra ' + extra.length); }
+      fetch(ICE_URL, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); }).then(function (j) {
+        var got = (Array.isArray(j) ? j : (j && j.iceServers) || []).filter(function (x) { return x && x.urls; });
+        if (got.length) { ICE = got.concat(ICE_REST); dset('turn', 'metered ' + got.length); }
       }),
       new Promise(function (res) { setTimeout(res, 4000); })
-    ]).catch(function () { iceLoad = null; dset('turn', 'fetch failed'); });
+    ]).catch(function (e) { iceLoad = null; dset('turn', 'static (fetch failed: ' + (e && e.message) + ')'); });
     return iceLoad;
   }
   var ERR_BROKER = 'אין חיבור לשרת התיאום. משחק אונליין צריך אינטרנט – בדקו את החיבור ונסו שוב.';
@@ -171,7 +181,7 @@
       var pc = c.peerConnection;
       if (!pc) { if (tries++ < 40) setTimeout(hook, 100); return; }
       var loc = {}, rem = {};
-      function upd() { c.__rem = Object.keys(rem).length; dset('ice', tag + ' ' + pc.iceConnectionState + ' L' + JSON.stringify(loc) + ' R' + JSON.stringify(rem) + ' ' + Math.round((Date.now() - t0) / 1000) + 's'); }
+      function upd() { c.__rem = Object.keys(rem).length; D.relay = !!loc.relay; dset('ice', tag + ' ' + pc.iceConnectionState + ' L' + JSON.stringify(loc) + ' R' + JSON.stringify(rem) + ' ' + Math.round((Date.now() - t0) / 1000) + 's'); }
       pc.addEventListener('icecandidate', function (e) { if (e.candidate) { var m = / typ (\w+)/.exec(e.candidate.candidate); var k = m ? m[1] : '?'; if (/\.local /.test(e.candidate.candidate)) k += '-mdns'; loc[k] = (loc[k] || 0) + 1; upd(); } });
       pc.addEventListener('iceconnectionstatechange', function () {
         upd();
