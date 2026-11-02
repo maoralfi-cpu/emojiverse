@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#e5e9f0">
 <meta name="description" content="כובש – משחק כיבוש שטח, עובד בלי אינטרנט, בלי פרסומות">
 <meta name="flypod" content="none">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; manifest-src 'self'; worker-src 'self'">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>כובש</title>
@@ -25,6 +25,7 @@
   <button id="pauseBtn" class="iconbtn" aria-label="השהה">❚❚</button>
   <canvas id="minimap" width="110" height="110"></canvas>
   <div id="feed"></div>
+  <div id="timer" class="hidden">3:00</div>
 </div>
 <div id="joyBase" class="hidden"><div id="joyKnob"></div></div>
 
@@ -41,6 +42,7 @@
       <button data-v="easy">קל</button><button data-v="normal">רגיל</button><button data-v="hard">קשה</button>
     </div>
     <button id="playBtn" class="primary">שחק ▶</button>
+    <button id="onlineBtn" class="primary family">שחק משפחתי אונליין 👨‍👩‍👧‍👦</button>
     <div class="row">
       <button id="settingsBtn">⚙️ הגדרות</button>
       <button id="helpBtn">❓ איך משחקים</button>
@@ -115,11 +117,76 @@
   </div>
 </section>
 
+<!-- אונליין: פתיחה/הצטרפות -->
+<section id="online" class="screen hidden">
+  <div class="card small">
+    <h2>משחק משפחתי אונליין</h2>
+    <p class="sub">טלפון אחד פותח חדר, וכל השאר מצטרפים עם הקוד או הקישור. צריך אינטרנט.</p>
+    <button id="hostBtn" class="primary">פתח חדר 🏠</button>
+    <div class="label">או הצטרפו לחדר קיים</div>
+    <div class="joinrow"><input id="codeInput" maxlength="6" placeholder="קוד חדר" autocomplete="off" autocapitalize="characters" dir="ltr"><button id="joinBtn">הצטרף לחדר</button></div>
+    <p id="onlineMsg" class="netmsg" role="status"></p>
+    <button id="onlineBack">חזרה</button>
+  </div>
+</section>
+
+<!-- לובי -->
+<section id="lobby" class="screen hidden">
+  <div class="card">
+    <h2>חדר <span id="roomCode" dir="ltr" class="code"></span></h2>
+    <div id="shareBox">
+      <input id="shareLink" readonly dir="ltr" aria-label="קישור לחדר">
+      <div class="row"><button id="shareBtn">📤 שיתוף</button><a id="waLink" class="btnlink" target="_blank" rel="noopener">וואטסאפ</a></div>
+    </div>
+    <label class="field">השם שלך<input id="lobbyName" maxlength="12" placeholder="השם שלך"></label>
+    <div class="label">בחרו דמות (כל דמות – לשחקן אחד)</div>
+    <div id="lobbyAvatars" class="avgrid"></div>
+    <div class="label">שחקנים בחדר <span id="lobbyCount"></span></div>
+    <ul id="lobbyPlayers"></ul>
+    <div id="hostCfg">
+      <div class="label">בוטים</div>
+      <div class="seg" id="mpBotsSeg"><button data-v="0">בלי בוטים</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button><button data-v="6">6</button></div>
+      <div class="label">רמת הבוטים</div>
+      <div class="seg" id="mpDiffSeg"><button data-v="easy">קל</button><button data-v="normal">רגיל</button><button data-v="hard">קשה</button></div>
+      <div class="label">אורך סיבוב</div>
+      <div class="seg" id="mpTimeSeg"><button data-v="2">2 דק'</button><button data-v="3">3 דק'</button><button data-v="5">5 דק'</button></div>
+    </div>
+    <button id="startBtn" class="primary">התחל ▶</button>
+    <p id="startHint" class="sub"></p>
+    <p id="waitHost" class="sub">מחכים שהמארח יתחיל…</p>
+    <p id="lobbyMsg" class="sub"></p>
+    <button id="leaveBtn">יציאה מהחדר</button>
+  </div>
+</section>
+
+<!-- תוצאות סיבוב -->
+<section id="results" class="screen hidden">
+  <div class="card small">
+    <h2>סוף הסיבוב 🏁</h2>
+    <ol id="rankList"></ol>
+    <button id="againRoundBtn" class="primary">עוד סיבוב ↻</button>
+    <button id="toLobbyBtn">ללובי</button>
+    <p id="resultsWait" class="sub">מחכים שהמארח יתחיל סיבוב נוסף…</p>
+    <button id="resultsLeave">יציאה</button>
+  </div>
+</section>
+
+<!-- הודעת רשת -->
+<section id="netmsg" class="screen hidden">
+  <div class="card small">
+    <h2 id="netTitle"></h2>
+    <p id="netText" class="sub"></p>
+    <button id="netOk" class="primary">אישור</button>
+  </div>
+</section>
+
 <script src="js/game.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/terrain.js"></script>
 <script src="js/input.js"></script>
 <script src="js/avatars.js"></script>
+<script src="js/net.js"></script>
 <script src="js/main.js"></script>
+<script src="js/mp.js"></script>
 </body>
 </html>

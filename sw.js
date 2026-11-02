@@ -1,8 +1,8 @@
 /* כובש – Service Worker: שומר את כל הקבצים לעבודה מלאה בלי אינטרנט */
-const VERSION = 'kovesh-20261102072234';
+const VERSION = 'kovesh-20261102074452';
 const ASSETS = [
   './', './index.html', './style.css', './manifest.webmanifest',
-  './js/game.js', './js/ai.js', './js/terrain.js', './js/input.js', './js/avatars.js', './js/main.js',
+  './js/game.js', './js/ai.js', './js/terrain.js', './js/input.js', './js/avatars.js', './js/net.js', './js/main.js', './js/mp.js', './js/vendor/peerjs.min.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-192.png', './icons/maskable-512.png'
 ];
 self.addEventListener('install', e => {
@@ -12,7 +12,7 @@ self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== self.location.origin) return; // שרת התיאום של האונליין – תמיד מהרשת
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true, ignoreVary: true }).then(hit => hit || fetch(e.request).catch(() => caches.match('./index.html', { ignoreVary: true })))
   );

@@ -26,6 +26,7 @@
   var canvas = $('game'), ctx = canvas.getContext('2d', { alpha: false });
   var mini = $('minimap'), mctx = mini.getContext('2d');
   var g = null, me = null, state = 'menu';
+  var mode = 'solo', MPH = null, match = null; // מצב רשת: solo / host / client (ראו js/mp.js)
   var W = 0, H = 0, DPR = 1, unitPx = 20;
   var rafId = 0, lastFrame = 0, acc = 0, lastHud = 0;
   var paths = [], layer = null, layerCtx = null, layerX = 0, layerY = 0, dirtyWorld = null;
@@ -63,7 +64,7 @@
   showBest();
 
   function show(id) {
-    ['menu', 'settings', 'help', 'paused', 'over'].forEach(function (s) { $(s).classList.toggle('hidden', s !== id); });
+    [].forEach.call(document.querySelectorAll('section.screen'), function (el) { el.classList.toggle('hidden', el.id !== id); });
   }
   $('playBtn').onclick = startGame;
   $('settingsBtn').onclick = function () { show('settings'); };
@@ -103,6 +104,7 @@
   function css(c, a) { return a == null ? 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')' : 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
 
   function startGame() {
+    mode = 'solo'; match = null; $('timer').classList.add('hidden');
     S.name = $('nameInput').value.trim(); save('kovesh.settings', S);
     g = new Game({ size: S.size });
     startBest = { pct: BEST.pct, kills: BEST.kills };
@@ -118,19 +120,26 @@
       var col = b < freeAv.length ? Avatars.list[av].color : extra.shift();
       g.addPlayer({ name: names[b], isBot: true, avatar: av, color: col });
     }
-    rgb = [[0, 0, 0]]; trailCss = ['']; darkCss = ['']; fillCss = ['']; lineCss = [''];
-    avatarURLs = [null];
-    g.players.forEach(function (p) {
-      var c = hexRgb(p.color);
-      rgb[p.id] = c; fillCss[p.id] = p.color;
-      trailCss[p.id] = css(saturate(c, 1.45, 0.9), 0.9);                 // אותו גוון, רווי יותר
-      darkCss[p.id] = css(mix(c, SLATE, 0.3), 0.55);                     // צל רך
-      lineCss[p.id] = css(mix(c, SLATE, p === me ? 0.45 : 0.25));        // קו מתאר כהה יותר באותו גוון
-      avatarURLs[p.id] = Avatars.dataURL(p.avatar, 64, p.color);
-      p.blinkAt = performance.now() + 1000 + Math.random() * 3000;
-    });
+    styleAll();
     g.spawn(me, { x: g.W / 2, y: g.W / 2 });
     for (var k = 1; k < g.players.length; k++) g.spawn(g.players[k]);
+    beginPlay();
+  }
+  function styleAll() {
+    rgb = [[0, 0, 0]]; trailCss = ['']; darkCss = ['']; fillCss = ['']; lineCss = [''];
+    avatarURLs = [null];
+    g.players.forEach(stylePlayer);
+  }
+  function stylePlayer(p) {
+    var c = hexRgb(p.color);
+    rgb[p.id] = c; fillCss[p.id] = p.color;
+    trailCss[p.id] = css(saturate(c, 1.45, 0.9), 0.9);                 // אותו גוון, רווי יותר
+    darkCss[p.id] = css(mix(c, SLATE, 0.3), 0.55);                     // צל רך
+    lineCss[p.id] = css(mix(c, SLATE, p === me ? 0.45 : 0.25));        // קו מתאר כהה יותר באותו גוון
+    avatarURLs[p.id] = Avatars.dataURL(p.avatar, 64, p.color);
+    p.blinkAt = performance.now() + 1000 + Math.random() * 3000;
+  }
+  function beginPlay() {
     paths = [];
     setupMinimap();
     effects = []; camX = me.x; camY = me.y;
@@ -143,6 +152,33 @@
     state = 'play'; acc = 0; lastFrame = 0;
     updateHud(true);
     startLoop();
+  }
+  /* משחק רשת. cfg: { mode:'host'|'client', size, roster:[{name,avatar,color,isBot}], myId, diff, roundMs }
+     במארח: סימולציה מלאה. בלקוח: משחק "מראה" שמתעדכן מתמונות המצב (בלי step). */
+  function startMatch(cfg) {
+    mode = cfg.mode; match = { diff: cfg.diff || 'easy', roundMs: cfg.roundMs, endTick: 0, msLeft: cfg.roundMs };
+    g = new Game({ size: cfg.size });
+    cfg.roster.forEach(function (r) { g.addPlayer(r); });
+    me = g.players[cfg.myId - 1];
+    styleAll();
+    if (mode === 'host') {
+      var n = g.players.length;
+      for (var k = 0; k < n; k++) { var a = k / n * Math.PI * 2; g.spawn(g.players[k], g.findSpawn() || { x: g.W / 2 + Math.cos(a) * g.W * 0.3, y: g.W / 2 + Math.sin(a) * g.W * 0.3 }); }
+      match.endTick = g.tickNo + Math.round(cfg.roundMs / TICK_MS);
+    }
+    $('timer').classList.remove('hidden');
+    beginPlay();
+    return g;
+  }
+  /* הצטרפות באמצע סיבוב (מארח) או עדכון רשימה (לקוח) */
+  function addMatchPlayer(r, spawn) {
+    var p = g.addPlayer(r); stylePlayer(p);
+    if (spawn) g.spawn(p);
+    return p;
+  }
+  function endRound() {
+    if (mode === 'solo') return;
+    state = 'results'; stopLoop(); touchId = null; $('joyBase').classList.add('hidden');
   }
   function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
 
@@ -193,15 +229,30 @@
     if (lastFrame && now - lastFrame < interval - 2) return;  // מגבלת פריימים
     var dt = lastFrame ? Math.min(250, now - lastFrame) : 0;
     lastFrame = now;
+    if (mode === 'client') {   // לקוח: אין סימולציה – מיקומים מאינטרפולציה של תמונות המצב
+      clientKeys();
+      if (MPH) MPH.clientFrame(now);
+      flushTerrain(); updateZoom(dt); render(0, now);
+      if (now - lastHud > 400) { lastHud = now; updateHud(false); }
+      return;
+    }
     acc += dt;
     var ticks = 0;
-    while (acc >= TICK_MS && ticks < 6) { tick(); acc -= TICK_MS; ticks++; }
+    while (acc >= TICK_MS && ticks < 6 && (state === 'play' || state === 'dying')) { tick(); acc -= TICK_MS; ticks++; }
     if (ticks) flushTerrain();
+    if (!g) return;
     updateZoom(dt);
     render(Math.min(1, acc / TICK_MS), now);
     if (now - lastHud > 400) { lastHud = now; updateHud(false); }
   }
 
+  function clientKeys() {
+    if (!me || !me.alive) return;
+    var vx = (keysHeld.ArrowRight ? 1 : 0) - (keysHeld.ArrowLeft ? 1 : 0), vy = (keysHeld.ArrowDown ? 1 : 0) - (keysHeld.ArrowUp ? 1 : 0);
+    if (vx || vy) steer(Math.atan2(vy, vx));
+    var t = (keysHeld.KeyD ? 1 : 0) - (keysHeld.KeyA ? 1 : 0);
+    if (t) steer(me.h + t * 0.6);
+  }
   function tick() {
     var ps = g.players;
     // מקלדת
@@ -210,16 +261,21 @@
       if (vx || vy) me.target = Math.atan2(vy, vx);
       me.turnInput = (keysHeld.KeyD ? 1 : 0) - (keysHeld.KeyA ? 1 : 0);
     }
-    for (var k = 0; k < ps.length; k++) if (ps[k].alive && ps[k].isBot && (g.tickNo + ps[k].id) % g.AI_EVERY === 0) AI.think(g, ps[k], S.diff);
+    for (var k = 0; k < ps.length; k++) if (ps[k].alive && ps[k].isBot && (g.tickNo + ps[k].id) % g.AI_EVERY === 0) AI.think(g, ps[k], match ? match.diff : S.diff);
     g.step();
     for (var e = 0; e < g.events.length; e++) handleEvent(g.events[e]);
     g.events.length = 0;
     for (k = 0; k < ps.length; k++) {
       var p = ps[k];
-      if (!p.alive && p.isBot) {
+      if (!p.alive && !p.gone && (p.isBot || mode === 'host')) {
         if (!p.respawnAt) p.respawnAt = g.tickNo + RESPAWN_TICKS;
         else if (g.tickNo >= p.respawnAt) { if (g.spawn(p)) p.respawnAt = 0; else p.respawnAt = g.tickNo + 10; }
       }
+    }
+    if (mode === 'host') {
+      match.msLeft = Math.max(0, (match.endTick - g.tickNo) * TICK_MS);
+      if (MPH) MPH.onTick();
+      if (g && g.tickNo >= match.endTick && state === 'play' && MPH) MPH.roundOver();
     }
   }
 
@@ -227,10 +283,18 @@
     if (ev.type === 'death') {
       var v = ev.victim;
       effects.push({ x: v.x, y: v.y, color: v.color, t0: performance.now() });
-      if (v === me) { gameOver(ev); return; }
+      if (mode === 'host' && MPH) MPH.onEvent(ev);
+      if (v === me && mode === 'solo') { gameOver(ev); return; }
+      if (v === me) { myDeath(ev); return; }
+      if (ev.reason === 'left') { feed(v.name + ' עזב/ה את המשחק'); return; }
       if (ev.killer === me) feed('הבסת את ' + v.name + '! ⚔️');
       else if (ev.killer) feed(ev.killer.name + ' הביס את ' + v.name);
     }
+  }
+  function myDeath(ev) {
+    if (S.vib && navigator.vibrate) try { navigator.vibrate(150); } catch (e) {}
+    var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש' };
+    feed('נפסלת (' + (reasons[ev.reason] || '') + (ev.killer ? ' – ' + ev.killer.name : '') + ') · חוזרים בעוד 3 שניות');
   }
   function feed(msg) {
     var el = document.createElement('div'); el.textContent = msg;
@@ -368,9 +432,10 @@
 
   function updateHud(force) {
     if (!g) return;
+    if (match) { var sec = Math.ceil((match.msLeft || 0) / 1000); $('timer').textContent = Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2); }
     $('pct').textContent = g.pct(me).toFixed(1) + '%';
     $('kills').textContent = '⚔️ ' + me.kills;
-    var list = g.players.filter(function (p) { return p.alive; }).sort(function (a, b) { return g.counts[b.id] - g.counts[a.id]; }).slice(0, 5);
+    var list = g.players.filter(function (p) { return p.alive && !p.gone; }).sort(function (a, b) { return g.counts[b.id] - g.counts[a.id]; }).slice(0, 5);
     if (me.alive && list.indexOf(me) < 0) list.push(me);
     var key = list.map(function (p) { return p.id + ':' + g.pct(p).toFixed(1); }).join(',');
     if (key !== lastBoardKey || force) {
@@ -392,15 +457,21 @@
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   // ---------- השהיה / סיום ----------
-  function pause() {
+  function pause(why) {
+    if (mode === 'client') { if (state === 'play') show('paused'); return; }   // לקוח: תפריט בלבד, המשחק ממשיך אצל המארח
     if (state !== 'play') return;
     state = 'paused'; stopLoop(); show('paused');
+    if (mode === 'host' && MPH) MPH.onPause(why || 'btn');
   }
   function resume() {
+    if (mode === 'client') { if (state === 'play') show(MPH && MPH.overlay() ? 'netmsg' : null); return; }
     if (state !== 'paused') return;
     show(null); state = 'play'; acc = 0; startLoop();
+    if (mode === 'host' && MPH) MPH.onResume();
   }
   function toMenu() {
+    if (mode !== 'solo' && MPH) MPH.leave();
+    mode = 'solo'; match = null; $('timer').classList.add('hidden');
     state = 'menu'; stopLoop(); g = null;
     $('hud').classList.add('hidden'); $('joyBase').classList.add('hidden');
     ctx.fillStyle = '#eceff4'; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -432,12 +503,13 @@
   // חיסכון בסוללה: כשהדף מוסתר – עוצרים הכול ומשהים
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
-      if (state === 'play') pause();
+      if (mode === 'client') return;                 // לקוח: המארח ממשיך; אצלנו rAF נעצר לבד
+      if (state === 'play') pause('bg');
       if (state === 'dying') { state = 'over'; show('over'); }
       stopLoop();
     }
   });
-  window.addEventListener('pagehide', function () { if (state === 'play') pause(); });
+  window.addEventListener('pagehide', function () { if (state === 'play' && mode !== 'client') pause('bg'); });
 
   // ---------- קלט ----------
   // חיצים: כיוון מוחלט (כולל אלכסונים, 8 כיוונים); A/D: סיבוב שמאלה/ימינה כל עוד לוחצים
@@ -445,7 +517,7 @@
   window.addEventListener('keydown', function (e) {
     if (e.target && e.target.tagName === 'INPUT') { if (e.key === 'Enter' && state === 'menu') startGame(); return; }
     if (e.code === 'KeyP' || e.key === 'Escape') { if (state === 'play') pause(); else if (state === 'paused') resume(); e.preventDefault(); return; }
-    if (e.key === 'Enter' && (state === 'menu' || state === 'over')) { startGame(); return; }
+    if (e.key === 'Enter' && mode === 'solo' && (state === 'over' || state === 'menu' && !$('menu').classList.contains('hidden'))) { startGame(); return; }
     var c = HOLD[e.code] ? e.code : (HOLD[e.key] ? e.key : null);
     if (c && state === 'play') { keysHeld[c] = true; e.preventDefault(); }
   });
@@ -461,7 +533,7 @@
   }
   function isJoy() { return S.ctrl === 'joy'; }
   function joySetup() { drag.set(S.sens, S.ctrl); drag.setCenter(W / 2, H / 2); joyBase.classList.toggle('hidden', !isJoy()); if (isJoy()) joyRest(); }
-  function steer(a) { if (a != null && me && me.alive) me.target = a; }
+  function steer(a) { if (a != null && me && me.alive) { me.target = a; if (mode === 'client' && MPH) MPH.onSteer(a); } }
   function onDown(e) {
     if (state !== 'play' || touchId !== null) return;
     e.preventDefault();
@@ -495,6 +567,17 @@
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
   }
 
+  // ממשק למודול הרשת (js/mp.js)
+  window.KoveshCore = {
+    attach: function (h) { MPH = h; },
+    settings: S, save: function () { save('kovesh.settings', S); },
+    startMatch: startMatch, addMatchPlayer: addMatchPlayer, endRound: endRound, toMenu: toMenu, show: show, feed: feed,
+    effect: function (x, y, color) { effects.push({ x: x, y: y, color: color, t0: performance.now() }); },
+    myDeath: myDeath, stopLoop: stopLoop, startLoop: function () { if (state === 'play') startLoop(); },
+    setState: function (st) { state = st; }, resize: resize,
+    get game() { return g; }, get me() { return me; }, get state() { return state; }, get mode() { return mode; }, get match() { return match; },
+    TICK_MS: TICK_MS
+  };
   // חשיפה לבדיקות אוטומטיות בלבד
   window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, start: startGame, pause: pause };
 })();
