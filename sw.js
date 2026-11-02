@@ -1,5 +1,5 @@
 /* כובש – Service Worker: שומר את כל הקבצים לעבודה מלאה בלי אינטרנט */
-const VERSION = 'kovesh-20261102054513';
+const VERSION = 'kovesh-20261102072131';
 const ASSETS = [
   './', './index.html', './style.css', './manifest.webmanifest',
   './js/game.js', './js/ai.js', './js/terrain.js', './js/input.js', './js/avatars.js', './js/main.js',
