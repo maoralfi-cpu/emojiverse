@@ -160,3 +160,8 @@ button:active{transform:scale(.97)}
 .bootcard{max-width:420px;background:#fff;border-radius:16px;padding:18px;text-align:center;font-size:17px;line-height:1.5;box-shadow:0 4px 20px rgba(0,0,0,.12)}
 .bootcard pre{direction:ltr;text-align:left;font-size:10px;color:#888;white-space:pre-wrap;word-break:break-all;margin:8px 0 0}
 .card{min-width:0;max-width:100%;box-sizing:border-box}
+/* פריסה בטוחה אם התפריט לא נראה */
+html.safe .screen{position:fixed;top:0;left:0;right:0;bottom:0;display:block;overflow:auto;height:auto;padding:8px}
+html.safe .screen.hidden{display:none!important}
+html.safe .card{display:block;margin:0 auto;max-width:480px;max-height:none;overflow:visible}
+html.safe .card>*{margin:6px 0}

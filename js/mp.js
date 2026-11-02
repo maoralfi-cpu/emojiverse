@@ -297,6 +297,8 @@
     leave(); role = 'client'; leaving = false; code = c; msg('onlineMsg', 'מתחברים לחדר ' + c + '…'); Core.show('online');
     loadPeer().then(function () {
       peer = newPeer();
+      clearTimeout(connectTimer);
+      connectTimer = setTimeout(function () { if (role === 'client' && !(conn && conn.open)) failClient('אין חיבור לשרת התיאום. משחק אונליין צריך אינטרנט – בדקו את החיבור ונסו שוב.'); }, 20000);
       peer.on('open', function (id) {
         myKey = id;
         conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'raw' });

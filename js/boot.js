@@ -16,5 +16,24 @@
   window.addEventListener && window.addEventListener('unhandledrejection', function (ev) {
     errs.push('promise: ' + (ev && ev.reason && (ev.reason.message || ev.reason)));
   });
+  // בדיקת תצוגה: אם התפריט לא נראה בפועל (פריסה שבורה בדפדפן מסוים) – עוברים לפריסה פשוטה ובטוחה
+  function diag() {
+    var m = document.getElementById('menu'), c = m && m.querySelector('.card');
+    var r = c ? c.getBoundingClientRect() : null, vw = window.innerWidth, vh = window.innerHeight;
+    return { r: r, vw: vw, vh: vh, ok: !!(r && r.width > 40 && r.height > 40 && r.right > 10 && r.left < vw - 10 && r.bottom > 10 && r.top < vh - 10) };
+  }
+  function check() {
+    var m = document.getElementById('menu');
+    if (!m || m.classList.contains('hidden')) return;
+    var d = diag();
+    if (!d.ok) { document.documentElement.className += ' safe'; errs.push('layout fallback ' + JSON.stringify(d.r) + ' ' + d.vw + 'x' + d.vh); }
+  }
+  setTimeout(check, 1500);
+  if (/[?&]diag/.test(location.search)) setTimeout(function () {
+    var d = diag(), e = document.getElementById('bootErr'), b = box(); if (!b || !e) return;
+    b.className = 'bootfail';
+    e.textContent = 'UA: ' + navigator.userAgent + '\nview ' + d.vw + 'x' + d.vh + ' dpr ' + window.devicePixelRatio + '\ncard ' + JSON.stringify(d.r) + '\nbooted ' + !!window.__evBooted + ' sw ' + !!(navigator.serviceWorker && navigator.serviceWorker.controller) + '\nerrors: ' + (errs.join(' | ') || 'none');
+    b.onclick = function () { b.className = 'hidden'; };
+  }, 3000);
   setTimeout(function () { if (!window.__evBooted) { errs.push('boot timeout'); show(); } }, 6000);
 })();
