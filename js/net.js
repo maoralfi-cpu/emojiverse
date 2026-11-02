@@ -94,7 +94,9 @@
   /* קודי חדר: 4 תווים בלי תווים מבלבלים (O/0, I/1/L) */
   var ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   function roomCode(rand) { rand = rand || Math.random; var s = ''; for (var i = 0; i < 4; i++) s += ALPHA[Math.floor(rand() * ALPHA.length)]; return s; }
-  function cleanCode(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); }
+  // מקלדת עברית: אותה מקשה => האות האנגלית (ש=A, נ=B …), כדי שקוד שהוקלד בעברית בטעות יעבוד
+  var HEB = { 'ש': 'A', 'נ': 'B', 'ב': 'C', 'ג': 'D', 'ק': 'E', 'כ': 'F', 'ע': 'G', 'י': 'H', 'ן': 'I', 'ח': 'J', 'ל': 'K', 'ך': 'L', 'צ': 'M', 'מ': 'N', 'ם': 'O', 'פ': 'P', '/': 'Q', 'ר': 'R', 'ד': 'S', 'א': 'T', 'ו': 'U', 'ה': 'V', "'": 'W', 'ס': 'X', 'ט': 'Y', 'ז': 'Z' };
+  function cleanCode(s) { return String(s || '').replace(/[\u05d0-\u05ea\/']/g, function (c) { return HEB[c] || ''; }).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); }
   function validCode(s) { return /^[A-Z0-9]{4,6}$/.test(s); }
   function cleanName(s) { return String(s || '').replace(/[<>&"\u0000-\u001f]/g, '').trim().slice(0, 12); }
 

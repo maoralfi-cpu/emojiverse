@@ -136,12 +136,13 @@
 <!-- אונליין: פתיחה/הצטרפות -->
 <section id="online" class="screen hidden">
   <div class="card small">
-    <h2>ממשחק אונליין</h2>
+    <h2>משחק אונליין</h2>
     <p class="sub">טלפון אחד פותח חדר, וכל השאר מצטרפים עם הקוד או הקישור. צריך אינטרנט.</p>
     <button id="hostBtn" class="primary">פתח חדר 🏠</button>
     <div class="label">או הצטרפו לחדר קיים</div>
-    <div class="joinrow"><input id="codeInput" maxlength="6" placeholder="קוד חדר" autocomplete="off" autocapitalize="characters" dir="ltr"><button id="joinBtn">הצטרף לחדר</button></div>
+    <div class="joinrow"><input id="codeInput" maxlength="6" placeholder="קוד חדר" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" inputmode="text" dir="ltr"><button id="joinBtn">הצטרף לחדר</button></div>
     <p id="onlineMsg" class="netmsg" role="status"></p>
+    <button id="retryBtn" class="hidden">🔄 נסו שוב</button>
     <button id="onlineBack">חזרה</button>
   </div>
 </section>

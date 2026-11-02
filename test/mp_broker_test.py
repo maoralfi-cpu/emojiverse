@@ -27,8 +27,12 @@ with sync_playwright() as p:
     R['room_opened_on_live_broker'] = poll(host, "document.getElementById('roomCode').textContent.length===4 && !document.getElementById('lobby').classList.contains('hidden')", 20000)
     code = host.evaluate("document.getElementById('roomCode').textContent"); R['code'] = code
     R['share_link'] = host.evaluate("document.getElementById('shareLink').value")
+    # המארח מאבד את שרת התיאום (מעבר לוואטסאפ) – צריך לחזור לבד עם אותו קוד
+    host.evaluate("__koveshNet._drop()")
+    R['host_dropped'] = poll(host, "window.__evNet.broker==='disconnected'", 5000)
+    R['host_rehosted_same_code'] = poll(host, "window.__evNet.broker==='open'", 20000) and host.evaluate("document.getElementById('roomCode').textContent") == code
     bad.goto(url + '?room=ZZZZ')
-    R['wrong_code_msg'] = poll(bad, "document.getElementById('onlineMsg').textContent.includes('לא נמצא')", 20000) and bad.evaluate("document.getElementById('onlineMsg').textContent")
+    R['wrong_code_msg'] = poll(bad, "document.getElementById('onlineMsg').textContent.includes('לא נמצא')", 30000) and bad.evaluate("document.getElementById('onlineMsg').textContent")
     c.goto(url + '?room=' + code)
     joined = poll(c, "!document.getElementById('lobby').classList.contains('hidden')", 25000)
     R['webrtc_joined'] = joined
@@ -41,5 +45,5 @@ with sync_playwright() as p:
 if srv: srv.kill()
 R['page_errors'] = errs
 print(json.dumps(R, ensure_ascii=False, indent=1))
-ok = R['room_opened_on_live_broker'] and R['wrong_code_msg'] and not errs and (R['webrtc_joined'] and R.get('host_sees_players') or (not R['webrtc_joined'] and 'Wi' in R.get('client_error_msg', '')))
+ok = R['room_opened_on_live_broker'] and R['host_rehosted_same_code'] and R['wrong_code_msg'] and not errs and (R['webrtc_joined'] and R.get('host_sees_players') or (not R['webrtc_joined'] and 'Hotspot' in R.get('client_error_msg', '')))
 print('PASS' + ('' if R['webrtc_joined'] else ' (WebRTC חסום בסביבה – נבדקה הודעת השגיאה)') if ok else 'FAIL')

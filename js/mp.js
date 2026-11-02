@@ -11,11 +11,12 @@
   var BOT_NAMES = ['שועל', 'נמר', 'ינשוף', 'דב', 'זאב', 'צבי'];
   var EXTRA_COLORS = ['#c98a96', '#8e9bb3', '#c2b48a', '#a3b8a0', '#b49fc4', '#c4a48f'];
   var ICE = [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
     // שרתי ה-TURN הציבוריים שמגיעים כברירת מחדל עם ספריית PeerJS (פרטי גישה ציבוריים, בלי חשבון)
-    { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }
+    { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478', 'turn:eu-0.turn.peerjs.com:3478?transport=tcp'], username: 'peerjs', credential: 'peerjsp' }
   ];
-  var ERR_NET = 'לא הצלחנו להתחבר לטלפון של המארח. נסו שכולם יהיו מחוברים לאותה רשת Wi‑Fi, ושהמארח פתוח במסך המשחק.';
+  var ERR_BROKER = 'אין חיבור לשרת התיאום. משחק אונליין צריך אינטרנט – בדקו את החיבור ונסו שוב.';
+  var ERR_NET = 'החדר נמצא, אבל החיבור הישיר בין הטלפונים נכשל. כנראה הראוטר חוסם חיבור בין מכשירים (רשת אורחים / בידוד לקוחות). פתרון בטוח: המארח מפעיל נקודה חמה (Hotspot) בטלפון, השני מתחבר אליה, ונסו שוב.';
 
   var S = Core.settings;
   var role = null;            // 'host' | 'client' | null
@@ -143,23 +144,82 @@
     leave(); role = 'host'; leaving = false; msg('onlineMsg', 'פותחים חדר…');
     loadPeer().then(function () { openHostPeer(0); }, function () { role = null; msg('onlineMsg', 'טעינת רכיב האונליין נכשלה. צריך אינטרנט בפעם הראשונה.'); });
   }
-  function openHostPeer(tries) {
-    code = Net.roomCode();
-    peer = newPeer(PREFIX + code);
-    peer.on('open', function () {
-      myKey = 'host';
-      humans = [{ key: 'host', name: Net.cleanName(S.name) || 'מארח', avatar: 0, emoji: Emoji.valid(S.emoji) ? S.emoji : '', host: true, conn: null, pid: 0 }];
-      inGame = false; showLobby();
-    });
-    peer.on('connection', onClientConn);
-    peer.on('error', function (err) {
-      if (err.type === 'unavailable-id' && tries < 5) { try { peer.destroy(); } catch (e) {} openHostPeer(tries + 1); return; }
-      if (role !== 'host') return;
-      if (Core.state === 'play' || Core.state === 'paused') return; // תקלה בשרת התיאום לא עוצרת משחק שכבר רץ
-      msg('onlineMsg', brokerErr(err)); Core.show('online'); role = null;
-    });
-    peer.on('disconnected', function () { if (role === 'host' && !leaving) try { peer.reconnect(); } catch (e) {} }); // נשארים זמינים להצטרפות
+  // diag: שלבי החיבור (מוצגים ב-?diag)
+  var D = window.__evNet = { broker: 'idle', id: '', ice: '', err: '', role: '' };
+  function dset(k, v) { D[k] = v; D.role = role || ''; }
+  // מעקב ICE לאבחון: סוגי מועמדים מקומיים/מרוחקים ומצב החיבור
+  function watchPc(c, tag) {
+    var t0 = Date.now(), tries = 0;
+    (function hook() {
+      var pc = c.peerConnection;
+      if (!pc) { if (tries++ < 40) setTimeout(hook, 100); return; }
+      var loc = {}, rem = {};
+      function upd() { c.__rem = Object.keys(rem).length; dset('ice', tag + ' ' + pc.iceConnectionState + ' L' + JSON.stringify(loc) + ' R' + JSON.stringify(rem) + ' ' + Math.round((Date.now() - t0) / 1000) + 's'); }
+      pc.addEventListener('icecandidate', function (e) { if (e.candidate) { var m = / typ (\w+)/.exec(e.candidate.candidate); var k = m ? m[1] : '?'; if (/\.local /.test(e.candidate.candidate)) k += '-mdns'; loc[k] = (loc[k] || 0) + 1; upd(); } });
+      pc.addEventListener('iceconnectionstatechange', function () {
+        upd();
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') pc.getStats().then(function (st) {
+          st.forEach(function (r) { if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') { var l = st.get(r.localCandidateId), q = st.get(r.remoteCandidateId); D.pair = (l && l.candidateType) + '/' + (q && q.candidateType) + ' ' + (l && l.protocol); } });
+        }, function () {});
+      });
+      var sp = pc.setRemoteDescription.bind(pc);
+      pc.setRemoteDescription = function (d) { try { rem.sdp = 1; (d.sdp || '').split('\n').forEach(function (ln) { var m = / typ (\w+)/.exec(ln); if (m && ln.indexOf('a=candidate') === 0) rem[m[1]] = (rem[m[1]] || 0) + 1; }); upd(); } catch (e) {} return sp.apply(null, arguments); };
+      var ac = pc.addIceCandidate.bind(pc);
+      pc.addIceCandidate = function (cand) { try { var m = / typ (\w+)/.exec(cand && cand.candidate || ''); if (m) { rem[m[1]] = (rem[m[1]] || 0) + 1; upd(); } } catch (e) {} return ac.apply(null, arguments); };
+      upd();
+    })();
   }
+  var lobbyOpen = false, rehostTimer = 0, rehostSince = 0, wakeLock = null;
+  function openHostPeer(tries, keepCode) {
+    if (!keepCode) { code = Net.roomCode(); lobbyOpen = false; }
+    var me = peer = newPeer(PREFIX + code); dset('broker', 'connecting'); dset('id', PREFIX + code);
+    me.on('open', function () {
+      if (me !== peer) return;
+      dset('broker', 'open'); rehostSince = 0;
+      if (lobbyOpen) { msg('lobbyMsg', ''); return; }   // חיבור מחדש לאותו חדר – הלובי נשאר כמו שהוא
+      lobbyOpen = true; myKey = 'host';
+      humans = [{ key: 'host', name: Net.cleanName(S.name) || 'מארח', avatar: 0, emoji: Emoji.valid(S.emoji) ? S.emoji : '', host: true, conn: null, pid: 0 }];
+      inGame = false; showLobby(); keepAwake();
+      msg('lobbyMsg', 'שתפו את הקוד/הקישור (כפתור שיתוף) וחזרו מיד ל-Chrome – החדר פתוח רק כשהמסך הזה פתוח.');
+    });
+    me.on('connection', onClientConn);
+    me.on('error', function (err) {
+      if (me !== peer) return;
+      dset('err', err.type || String(err));
+      if (err.type === 'unavailable-id' && !lobbyOpen && tries < 5) { try { me.destroy(); } catch (e) {} openHostPeer(tries + 1); return; }
+      if (role !== 'host') return;
+      if (lobbyOpen) { rehost(); return; }               // החדר כבר שותף – לא מוותרים עליו, מתחברים מחדש עם אותו קוד
+      msg('onlineMsg', brokerErr(err)); Core.show('online'); role = null; showRetry('host');
+    });
+    me.on('disconnected', function () { if (me !== peer) return; dset('broker', 'disconnected'); if (role === 'host' && !leaving) rehost(); }); // נשארים זמינים להצטרפות
+  }
+  // החזרת המארח לשרת התיאום (אחרי מעבר לוואטסאפ / מסך כבוי): reconnect, ואם צריך – Peer חדש עם אותו מזהה
+  function rehost() {
+    if (role !== 'host' || leaving || !peer) return;
+    if (!rehostSince) rehostSince = Date.now();
+    clearTimeout(rehostTimer);
+    if (peer.open && !peer.disconnected) return;
+    msg('lobbyMsg', 'מתחברים מחדש לשרת… החדר נשמר');
+    try {
+      if (!peer.destroyed && peer.disconnected) peer.reconnect();
+      else if (peer.destroyed) openHostPeer(0, true);
+    } catch (e) { try { peer.destroy(); } catch (x) {} openHostPeer(0, true); }
+    rehostTimer = setTimeout(function () {
+      if (role !== 'host' || !peer || (peer.open && !peer.disconnected)) return;
+      if (Date.now() - rehostSince > 8000) { try { peer.destroy(); } catch (x) {} openHostPeer(0, true); } // המזהה הישן עוד "תפוס" – מנסים שוב
+      rehost();
+    }, 4000);
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    if (role === 'host') { rehost(); keepAwake(); }
+  });
+  window.addEventListener('online', function () { if (role === 'host') rehost(); });
+  function keepAwake() {
+    try { if (navigator.wakeLock && !wakeLock && document.visibilityState === 'visible') navigator.wakeLock.request('screen').then(function (l) { wakeLock = l; l.addEventListener('release', function () { wakeLock = null; }); }, function () {}); } catch (e) {}
+  }
+  function showRetry(what) { var b = $('retryBtn'); b.dataset.what = what; b.classList.remove('hidden'); }
+  $('retryBtn').onclick = function () { this.classList.add('hidden'); if (this.dataset.what === 'host') startHost(); else joinRoom(this.dataset.what); };
   function lobbyView() {
     return { players: humans.map(function (h) { return { key: h.key, name: h.name, avatar: h.avatar, emoji: h.emoji, host: !!h.host }; }), cfg: cfg, code: code };
   }
@@ -176,7 +236,7 @@
     return 0;
   }
   function onClientConn(c) {
-    var h = null;
+    var h = null; watchPc(c, 'host');
     c.on('data', function (d) {
       if (typeof d !== 'string') return;
       if (d.charCodeAt(0) === 105 /* i */) { // קלט: "i<זווית>"
@@ -291,33 +351,54 @@
   }
 
   // ================= לקוח =================
-  function joinRoom(raw) {
+  function joinRoom(raw, since) {
     var c = Net.cleanCode(raw);
-    if (!Net.validCode(c)) { msg('onlineMsg', 'קוד חדר הוא 4 אותיות/ספרות'); return; }
-    leave(); role = 'client'; leaving = false; code = c; msg('onlineMsg', 'מתחברים לחדר ' + c + '…'); Core.show('online');
+    if (!Net.validCode(c)) { msg('onlineMsg', 'קוד חדר הוא 4 אותיות/ספרות באנגלית (למשל K7QP)'); return; }
+    $('retryBtn').classList.add('hidden');
+    if (!since) { leave(); since = Date.now(); }
+    role = 'client'; leaving = false; code = c; Core.show('online');
+    msg('onlineMsg', since && Date.now() - since > 1500 ? 'מחפשים את החדר ' + c + '… (ניסיון חוזר)' : 'מתחברים לחדר ' + c + '…');
     loadPeer().then(function () {
-      peer = newPeer();
+      if (role !== 'client' || code !== c) return;
+      var me = peer = newPeer(); dset('broker', 'connecting'); dset('ice', '');
       clearTimeout(connectTimer);
-      connectTimer = setTimeout(function () { if (role === 'client' && !(conn && conn.open)) failClient('אין חיבור לשרת התיאום. משחק אונליין צריך אינטרנט – בדקו את החיבור ונסו שוב.'); }, 20000);
-      peer.on('open', function (id) {
-        myKey = id;
-        conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'raw' });
-        clearTimeout(connectTimer);
-        connectTimer = setTimeout(function () { if (role === 'client' && !(conn && conn.open)) { failClient(ERR_NET); } }, 20000);
-        conn.on('open', function () { clearTimeout(connectTimer); send(conn, { t: 'hello', name: Net.cleanName(S.name), emoji: Emoji.valid(S.emoji) ? S.emoji : '', v: 5 }); msg('onlineMsg', 'מחובר! מחכים ללובי…'); });
-        conn.on('data', onHostData);
-        conn.on('close', function () { if (!leaving && role === 'client') hostGone(); });
-        conn.on('error', function () { if (!leaving && role === 'client' && !conn.open) failClient(ERR_NET); });
-        conn.on('iceStateChanged', function (st) { if (st === 'failed' && role === 'client') failClient(ERR_NET); });
+      connectTimer = setTimeout(function () {
+        if (me !== peer || role !== 'client' || (conn && conn.open)) return;
+        if (!me.open) return failClient(ERR_BROKER);
+        if (conn && !conn.__rem && Date.now() - since < 15000) { try { me.destroy(); } catch (e) {} peer = null; conn = null; return joinRoom(c, since); } // המארח לא ענה – עוד ניסיון
+        if (conn && !conn.__rem) return failClient(brokerErr({ type: 'peer-unavailable' }));  // אף אחד לא ענה: החדר לא קיים
+        if (Date.now() - since < 20000) { var cc = conn; connectTimer = setTimeout(function () { if (cc === conn && role === 'client' && !cc.open) failClient(ERR_NET); }, 20000 - (Date.now() - since)); return; } // נותנים ל-TURN זמן
+        failClient(ERR_NET);                                                                  // המארח ענה אבל ICE נכשל
+      }, 9000);
+      me.on('open', function (id) {
+        if (me !== peer) return;
+        myKey = id; dset('broker', 'open'); dset('id', id);
+        var cn = conn = me.connect(PREFIX + code, { reliable: true, serialization: 'raw' }); watchPc(cn, 'client');
+        cn.on('open', function () { if (cn !== conn) return; clearTimeout(connectTimer); send(cn, { t: 'hello', name: Net.cleanName(S.name), emoji: Emoji.valid(S.emoji) ? S.emoji : '', v: 5 }); msg('onlineMsg', 'מחובר! מחכים ללובי…'); });
+        cn.on('data', onHostData);
+        cn.on('close', function () { if (cn === conn && !leaving && role === 'client') { if (inLobbyOrGame()) hostGone(); else failClient(ERR_NET); } });
+        cn.on('error', function () { setTimeout(function () { if (cn === conn && me === peer && !leaving && role === 'client' && !cn.open) failClient(ERR_NET); }, 400); }); // שגיאת peer-unavailable מגיעה גם דרך ה-Peer – נותנים לה קדימות
+        cn.on('iceStateChanged', function (st) { if (cn === conn && st === 'failed' && role === 'client' && !cn.open) failClient(ERR_NET); });
       });
-      peer.on('error', function (err) { if (role === 'client' && !leaving) failClient(brokerErr(err)); });
-    }, function () { role = null; msg('onlineMsg', 'טעינת רכיב האונליין נכשלה. צריך אינטרנט.'); });
+      me.on('error', function (err) {
+        if (me !== peer || role !== 'client' || leaving) return;
+        dset('err', err.type || String(err));
+        // החדר עוד לא רשום (המארח חוזר מוואטסאפ / השרת איטי) – מנסים שוב עד 15 שניות
+        if (err.type === 'peer-unavailable' && Date.now() - since < 15000 && !inLobbyOrGame()) {
+          clearTimeout(connectTimer); try { me.destroy(); } catch (e) {} peer = null; conn = null;
+          setTimeout(function () { if (role === 'client' && code === c) joinRoom(c, since); }, 2000);
+          return;
+        }
+        failClient(brokerErr(err));
+      });
+    }, function () { role = null; msg('onlineMsg', 'טעינת רכיב האונליין נכשלה. צריך אינטרנט.'); showRetry(c); });
   }
+  function inLobbyOrGame() { return !!lobbyState || Core.mode === 'client'; }
   function failClient(text) {
     var inMatch = Core.mode === 'client';
     leave();
     if (inMatch) { Core.toMenu(); }
-    msg('onlineMsg', text); Core.show('online');
+    msg('onlineMsg', text); Core.show('online'); showRetry(code);
   }
   function hostGone() {
     var inMatch = Core.mode === 'client';
@@ -413,7 +494,8 @@
 
   // ---------- יציאה ----------
   function leave() {
-    leaving = true; clearTimeout(connectTimer);
+    leaving = true; clearTimeout(connectTimer); clearTimeout(rehostTimer); lobbyOpen = false; rehostSince = 0;
+    try { if (wakeLock) wakeLock.release(); } catch (e) {} wakeLock = null;
     if (role === 'host') { broadcast({ t: 'bye' }); humans.forEach(function (h) { try { h.conn && h.conn.close(); } catch (e) {} }); }
     try { if (conn) conn.close(); } catch (e) {}
     try { if (peer) peer.destroy(); } catch (e) {}
@@ -425,5 +507,5 @@
   var q = Net.cleanCode(new URLSearchParams(location.search).get('room'));
   if (Net.validCode(q)) setTimeout(function () { joinRoom(q); }, 0);
 
-  window.__koveshNet = { setCfg: function (o) { Object.assign(cfg, o); if (role === 'host') pushLobby(); }, get role() { return role; }, get code() { return code; }, get humans() { return humans.length; }, get lobby() { return lobbyState; }, get myId() { return myId; } };
+  window.__koveshNet = { _drop: function () { if (peer) peer.disconnect(); }, setCfg: function (o) { Object.assign(cfg, o); if (role === 'host') pushLobby(); }, get role() { return role; }, get code() { return code; }, get humans() { return humans.length; }, get lobby() { return lobbyState; }, get myId() { return myId; } };
 })();
