@@ -8,6 +8,7 @@ function seeded(s) { return () => { s = (s * 1664525 + 1013904223) >>> 0; return
 const R = 0, D = Math.PI / 2, L = Math.PI, U = -Math.PI / 2;
 // נהיגה בכיוון קבוע (מכוון גם את הכיוון בפועל, כדי לצייר צורות מדויקות)
 function go(g, p, ang, dist) { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && p.alive; i++) { p.h = p.target = ang; g.step(); } }
+const near = (a, b) => Math.abs(Game.angDiff(a, b)) < 0.02;
 const own = (g, p, x, y) => g.ownerAt(x, y) === p.id;
 
 console.log('כיבוש לולאה מלבנית (קו שבור)');
@@ -18,7 +19,7 @@ console.log('כיבוש לולאה מלבנית (קו שבור)');
   ok(Math.abs(a0 * 0.25 - Math.PI * 3.2 * 3.2) < 3, 'שטח התחלתי עגול ≈ πr² (' + (a0 * 0.25).toFixed(1) + ')');
   go(g, p, R, 12); ok(p.trail.length > 10, 'מחוץ לשטח נוצר שובל של נקודות');
   go(g, p, D, 10); go(g, p, L, 12);
-  go(g, p, U, 7);
+  go(g, p, U, 8);
   ok(p.alive && p.trail.length === 0, 'חזר לשטח, השובל נסגר');
   ok(own(g, p, 26, 25) && own(g, p, 30, 27) && own(g, p, 22, 28), 'פנים הלולאה נכבש');
   ok(!own(g, p, 36, 25) && !own(g, p, 26, 33) && !own(g, p, 26, 15), 'מחוץ ללולאה לא נכבש');
@@ -47,7 +48,7 @@ console.log('פגיעה בשובל של יריב (מרחק נקודה-מקטע)'
   go(g, a, R, 10); // a בחוץ, שובל אופקי ב-y=20 עד x≈20
   ok(a.alive && a.trail.length > 6, 'a בחוץ עם שובל');
   b.x = 16; b.y = 24; b.trail = []; b.h = b.target = U; // b חוצה את השובל של a
-  for (let i = 0; i < 20 && a.alive; i++) { a.h = a.target = D; b.h = b.target = U; g.step(); }
+  for (let i = 0; i < 40 && a.alive; i++) { a.h = a.target = D; b.h = b.target = U; g.step(); }
   ok(!a.alive, 'a נפסל כש-b חצה את השובל');
   ok(b.alive && b.kills === 1, 'b קיבל הריגה');
   ok(g.counts[a.id] === 0, 'השטח של a נמחק');
@@ -60,7 +61,7 @@ console.log('התקרבות לשובל בלי לגעת');
   g.spawn(a, { x: 10, y: 20 }); g.spawn(b, { x: 40, y: 45 });
   go(g, a, R, 10);
   b.x = 30; b.y = 21.2; b.trail = []; b.h = b.target = L; // נוסע במקביל, 1.2 יחידות מהשובל
-  for (let i = 0; i < 25; i++) { a.h = a.target = R; b.h = b.target = L; g.step(); }
+  for (let i = 0; i < 50; i++) { a.h = a.target = R; b.h = b.target = L; g.step(); }
   ok(a.alive, 'מרחק 1.2 > רדיוס פגיעה – אין פסילה');
 }
 
@@ -83,7 +84,7 @@ console.log('שובל עצמי');
 
 console.log('מיפוי קלט מגע לזווית');
 {
-  const near = (a, b) => Math.abs(Game.angDiff(a, b)) < 0.02;
+
   const d = new DragInput('medium', 'drag');
   d.down(100, 100);
   ok(d.move(105, 103) === null, 'אזור מת: תזוזה של ~6px לא משנה כיוון');
@@ -107,10 +108,25 @@ console.log('מהירות וסיבוב');
 {
   const g = new Game({ size: 60, rand: seeded(21) });
   ok(Math.abs(g.SPEED - 9.75) < 1e-9, 'מהירות 9.75 יח\'/ש\' (×1.5)');
-  ok(g.TURN * 180 / Math.PI >= 540, 'קצב סיבוב מקסימלי ≥ 540°/ש\' (' + Math.round(g.TURN * 180 / Math.PI) + ')');
+  ok(g.TURN * 180 / Math.PI >= 360 && g.TURN * 180 / Math.PI <= 420, 'קצב סיבוב מקסימלי 360–420°/ש\' כמו במקור (' + Math.round(g.TURN * 180 / Math.PI) + ')');
   const p = g.addPlayer({}); g.spawn(p, { x: 30, y: 30 }); p.h = p.target = 0;
   p.target = Math.PI * 0.999; let n = 0; while (Math.abs(Game.angDiff(p.h, p.target)) > 1e-6 && n < 100) { g.step(); n++; }
-  ok(n * g.DT <= 0.34, 'פנייה של 180° תוך ' + (n * g.DT).toFixed(2) + ' שניות');
+  ok(n * g.DT <= 0.5, 'פנייה של 180° תוך ' + (n * g.DT).toFixed(2) + ' שניות');
+}
+
+console.log('v4: רדיוס סיבוב ומצב הצבעה');
+{
+  const g = new Game({ size: 60, rand: seeded(41) });
+  const r = g.SPEED / g.TURN;
+  ok(r > 1.3 && r < 1.6, 'רדיוס סיבוב מינימלי ' + r.toFixed(2) + ' יח\' (≈1.8 רוחבי שובל 0.8)');
+  ok(Math.abs(g.DT - 1 / 60) < 1e-12 && g.AI_EVERY === 2, 'לוגיקה ב-60 צעדים לשנייה, בוטים ב-30');
+  const d = new DragInput('medium', 'point'); d.setCenter(200, 400);
+  ok(near(d.down(300, 400), 0), 'נגיעה מימין לדמות = 0 מיד בנגיעה');
+  ok(near(d.move(200, 300), -Math.PI / 2) || d.angle !== null, 'הזזה מעל הדמות פונה למעלה (עם החלקה)');
+  const h = new DragInput('high', 'point'); h.setCenter(0, 0); h.down(10, 10);
+  ok(near(h.move(-50, 0), Math.PI), 'רגישות גבוהה: בלי החלקה, שמאלה = π');
+  ok(h.aim(3, 3) === null, 'אזור מת סביב הדמות');
+  h.up(); ok(h.move(0, 50) === null && near(h.angle, Math.PI), 'אחרי הרמת האצבע הכיוון האחרון נשמר');
 }
 
 console.log('אין "מנהור" דרך שובל');
@@ -118,7 +134,7 @@ console.log('אין "מנהור" דרך שובל');
   // מהירות קיצונית: צעד אחד ארוך מפי 2 מרוחב הפגיעה – בדיקה סוחפת חייבת לתפוס
   let caught = 0, tries = 0;
   for (let off = 0; off < 1; off += 0.05) {
-    const g = new Game({ size: 60, speed: 40, rand: seeded(30) });
+    const g = new Game({ size: 60, speed: 80, rand: seeded(30) });
     const a = g.addPlayer({}), b = g.addPlayer({});
     g.spawn(a, { x: 10, y: 20 }); g.spawn(b, { x: 45, y: 50 });
     a.trail = [15, 20, 25, 20]; a.tb = [15, 20, 25, 20]; a.x = 25; a.y = 20; a.h = a.target = 0; a.x = 14; a.y = 25; // a ממשיך מחוץ למסלול
@@ -137,7 +153,7 @@ console.log('אין "מנהור" דרך שובל');
     g.spawn(a, { x: 5, y: 5 }); g.spawn(b, { x: 50, y: 50 });
     a.trail = [10, 30, 40, 30]; a.tb = [10, 30, 40, 30]; a.x = 40; a.y = 30.0; a.h = a.target = 0;
     b.x = 25 - Math.cos(ang) * 3; b.y = 30 + Math.sin(ang) * 3; b.h = b.target = -ang; b.trail = [];
-    for (let i = 0; i < 30 && a.alive; i++) { a.target = a.h; b.target = -ang; g.step(); }
+    for (let i = 0; i < 60 && a.alive; i++) { a.target = a.h; b.target = -ang; g.step(); }
     t2++; if (!a.alive) c2++;
   }
   ok(c2 === t2, `חציה בזוויות שונות במהירות הרגילה נתפסה ${c2}/${t2}`);
@@ -164,7 +180,7 @@ console.log('ראש בראש');
   const c = g2.addPlayer({}), d = g2.addPlayer({});
   g2.spawn(c, { x: 20, y: 30 }); g2.spawn(d, { x: 45, y: 30 });
   d.x = 26; d.y = 30; d.trail = [];
-  for (let i = 0; i < 10 && d.alive; i++) { c.h = c.target = R; d.h = d.target = L; g2.step(); }
+  for (let i = 0; i < 20 && d.alive; i++) { c.h = c.target = R; d.h = d.target = L; g2.step(); }
   ok(c.alive && !d.alive && c.kills === 1, 'מי שבתוך השטח שלו שורד');
 }
 
@@ -212,13 +228,13 @@ for (const lvl of ['easy', 'normal', 'hard']) {
   const g = new Game({ size: 100, rand: seeded(11) });
   for (let i = 0; i < 8; i++) { const p = g.addPlayer({ isBot: true }); g.spawn(p); }
   let deaths = 0, captures = 0, t0 = Date.now(), reasons = {};
-  const ticks = 6000; // 5 דקות משחק
+  const ticks = 12000; // 200 שניות משחק ב-60 צעדים לשנייה
   for (let s = 0; s < ticks; s++) {
-    for (const p of g.players) if (p.alive) AI.think(g, p, lvl);
+    for (const p of g.players) if (p.alive && (g.tickNo + p.id) % g.AI_EVERY === 0) AI.think(g, p, lvl);
     g.step();
     for (const e of g.events) { if (e.type === 'death') { deaths++; reasons[e.reason] = (reasons[e.reason] || 0) + 1; } if (e.type === 'capture') captures++; }
     g.events.length = 0;
-    if (s % 40 === 0) for (const p of g.players) if (!p.alive) g.spawn(p);
+    if (s % 80 === 0) for (const p of g.players) if (!p.alive) g.spawn(p);
   }
   const c = new Int32Array(32); for (let i = 0; i < g.owner.length; i++) c[g.owner[i]]++;
   let cons = true; for (let k = 1; k <= 8; k++) if (c[k] !== g.counts[k]) cons = false;

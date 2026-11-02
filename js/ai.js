@@ -40,17 +40,18 @@
     var ai = p.ai || (p.ai = { mode: 'home', t: 0, exitH: g.rand() * TAU, turned: 0, dir: 1, goal: null, goalT: 0, homeT: 0 });
     var home = g.ownerAt(p.x, p.y) === p.id, out = p.trail.length > 0, want = p.h;
     ai.t++;
+    var K = g.AI_EVERY || 1, STEP = g.SPEED * g.DT * K; // צעד "מחשבה" בזמן/מרחק, לא תלוי בקצב הלוגיקה
 
     if (!out && home && ai.mode !== 'home' && ai.mode !== 'hunt') { ai.mode = 'home'; ai.homeT = 0; ai.exitH = p.h + (g.rand() - 0.5) * 2.4; }
 
     // ציד
-    if (L.hunt > 0 && ai.mode !== 'return' && p.trail.length < 16 && ai.mode !== 'hunt' && g.tickNo % 6 === p.id % 6 && g.rand() < L.hunt) {
+    if (L.hunt > 0 && ai.mode !== 'return' && p.trail.length < 16 * K && ai.mode !== 'hunt' && g.tickNo % 6 === p.id % 6 && g.rand() < L.hunt) {
       var bd = Infinity, tx = 0, ty = 0;
       for (var k = 0; k < g.players.length; k++) {
         var q = g.players[k];
-        if (!q.alive || q === p || q.trail.length < 6) continue;
+        if (!q.alive || q === p || q.trail.length < 6 * K) continue;
         var tr = q.trail;
-        for (var i = 0; i < tr.length; i += 4) {
+        for (var i = 0; i < tr.length; i += 4 * K) {
           var d = Math.hypot(tr[i] - p.x, tr[i + 1] - p.y) - (q.isBot ? 0 : 2);
           if (d < bd) { bd = d; tx = tr[i]; ty = tr[i + 1]; }
         }
@@ -69,7 +70,7 @@
       if (out) {
         // יצאנו מהשטח – מתכננים גיחה
         ai.mode = 'out'; ai.t = 0; ai.exitH = p.h; ai.turned = 0; ai.dir = g.rand() < 0.5 ? 1 : -1;
-        ai.straight = Math.round((L.outMin + g.rand() * (L.outMax - L.outMin)) / (g.SPEED * g.DT) * 0.5);
+        ai.straight = Math.round((L.outMin + g.rand() * (L.outMax - L.outMin)) / STEP * 0.5);
         ai.arcTotal = Math.PI * (0.85 + g.rand() * 0.4);
       } else {
         if (ai.homeT % 38 === 0) ai.exitH += (g.rand() - 0.5) * 1.5;
@@ -78,10 +79,10 @@
     }
 
     if (ai.mode === 'out') {
-      if (p.trail.length / 2 * g.SPEED * g.DT > L.maxLen || enemyDist(g, p) < L.danger && p.trail.length > 8) ai.mode = 'return';
+      if (p.trail.length / 2 * g.SPEED * g.DT > L.maxLen || enemyDist(g, p) < L.danger && p.trail.length > 8 * K) ai.mode = 'return';
       else if (ai.t < ai.straight) want = ai.exitH + Math.sin(ai.t * 0.15) * 0.15;
       else {
-        var r = g.SPEED * g.DT / L.arcR * ai.dir;
+        var r = STEP / L.arcR * ai.dir;
         want = p.h + r; ai.turned += Math.abs(r);
         if (ai.turned >= ai.arcTotal) { ai.mode = 'return'; ai.goalT = 0; }
       }

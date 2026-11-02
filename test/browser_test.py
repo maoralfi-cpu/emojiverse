@@ -28,11 +28,23 @@ try:
         for k, ms in [('ArrowRight', 900), ('ArrowDown', 900), ('ArrowLeft', 900), ('ArrowUp', 1100)]:
             pg.keyboard.down(k); pg.wait_for_timeout(ms); pg.keyboard.up(k)
         # גרירה: כיוון המטרה צריך להתאים לזווית הגרירה (360°)
-        pg.mouse.move(200, 500); pg.mouse.down(); pg.mouse.move(240, 540, steps=4)
+        # הצבעה (v4): נגיעה בזווית 45° מהדמות (מרכז המסך) => כיוון היעד 45° מיד בנגיעה
+        results['died_in_key_loop'] = pg.evaluate('window.__kovesh.state') != 'play'
+        if results['died_in_key_loop']:
+            pg.evaluate('window.__kovesh.start()'); pg.wait_for_timeout(600)
+        cx, cy = 206, 457.5
+        pg.mouse.move(cx + 70, cy + 70); pg.mouse.down()
         ang = pg.evaluate('window.__kovesh.me.target')
+        pg.mouse.move(cx - 80, cy + 80, steps=6)
+        ang2 = pg.evaluate('window.__kovesh.me.target')
         pg.mouse.up()
+        pg.touchscreen.tap(cx - 120, cy)
+        ang3 = pg.evaluate('window.__kovesh.me.target')
         results['drag_45deg_target'] = round(ang, 2)
-        results['drag_ok'] = abs(ang - 0.785) < 0.15
+        results['point_135deg_after_slide'] = round(ang2, 2)
+        results['touch_tap_left'] = round(ang3, 2)
+        import math
+        results['drag_ok'] = abs(ang - 0.785) < 0.1 and abs(ang2 - 2.356) < 0.15 and abs(abs(ang3) - math.pi) < 0.1
         # מחזירים את השחקן הביתה (בעזרת היגוי לנקודת הבית) ומחכים שהבוטים יכבשו
         pg.evaluate("""() => new Promise(r => { const me = window.__kovesh.me; let n = 0;
             const t = setInterval(() => { me.target = Math.atan2(me.homeY - me.y, me.homeX - me.x); if (!me.trail.length || ++n > 120) { clearInterval(t); r(); } }, 50); })""")
@@ -46,15 +58,18 @@ try:
             pg.screenshot(path=os.path.join(ROOT, 'screenshot.png'))
         # אם השחקן נפסל במהלך התסריט (בוט/קיר) – מתחילים משחק חדש כדי להמשיך לבדוק
         results['died_during_script'] = st['state'] != 'play'
+        results['death_reason'] = pg.evaluate("(document.getElementById('over')||{}).innerText||''")[:120] if st['state'] != 'play' else ''
         if st['state'] != 'play':
-            pg.evaluate('window.__kovesh.start()'); pg.wait_for_timeout(2500)
+            pg.evaluate('window.__kovesh.start()'); pg.wait_for_timeout(1200)
             pg.screenshot(path=os.path.join(ROOT, 'screenshot.png'))
-        # השהיה עם P
+        # השהיה עם P (אם השחקן נפסל בינתיים – משחק חדש)
+        if pg.evaluate('window.__kovesh.state') != 'play':
+            pg.evaluate('window.__kovesh.start()'); pg.wait_for_timeout(300)
         pg.keyboard.press('KeyP'); pg.wait_for_timeout(200)
         t1 = pg.evaluate('window.__kovesh.game.tickNo'); pg.wait_for_timeout(600)
         t2 = pg.evaluate('window.__kovesh.game.tickNo')
         results['pause_stops_ticks'] = (t1 == t2) and pg.evaluate('window.__kovesh.state') == 'paused'
-        # מדידת קצב פריימים בפועל (ציפייה ~30)
+        # מדידת קצב פריימים בפועל (ציפייה ~60 בזמן משחק)
         pg.click('#resumeBtn')
         fps = pg.evaluate('''() => new Promise(r => { const f0 = window.__kovesh.frames, t0 = performance.now();
             setTimeout(() => r((window.__kovesh.frames - f0) / ((performance.now() - t0) / 1000)), 2000); })''')
@@ -84,5 +99,5 @@ errors = [e for e in errors if e not in blocked]
 results['csp_blocked_third_party'] = len(blocked)
 results['console_errors'] = errors
 print(json.dumps(results, ensure_ascii=False, indent=1))
-ok = results.get('drag_ok') and 20 <= results.get('render_fps', 0) <= 33 and not errors and results.get('pause_stops_ticks') and results.get('over_visible') and not results['external_requests']
+ok = results.get('drag_ok') and 45 <= results.get('render_fps', 0) <= 66 and not errors and results.get('pause_stops_ticks') and results.get('over_visible') and not results['external_requests']
 print('PASS' if ok else 'FAIL'); sys.exit(0 if ok else 1)

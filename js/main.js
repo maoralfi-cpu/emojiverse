@@ -6,8 +6,9 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------- הגדרות ושיאים ----------
-  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 30, dpr: 2, joy: false, mini: true, vib: true, sens: 'medium' };
+  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 4, mini: true, vib: true, sens: 'medium' };
   var S = load('kovesh.settings', DEFAULTS);
+  if ((S.v || 0) < 4) { S.ctrl = S.joy ? 'joy' : 'point'; if (S.fps < 60) S.fps = 60; S.v = 4; save('kovesh.settings', S); } // מעבר ל-v4
   var BEST = load('kovesh.best', { pct: 0, kills: 0 });
   function load(k, def) {
     try { var v = JSON.parse(localStorage.getItem(k)); return Object.assign({}, def, v || {}); } catch (e) { return Object.assign({}, def); }
@@ -16,9 +17,10 @@
 
   var EXTRA_COLORS = ['#c98a96', '#8e9bb3', '#c2b48a'];   // פסטל נורדי נוסף לבוטים כפולים
   var BOT_NAMES = ['שועל', 'נמר', 'ינשוף', 'דב', 'זאב', 'צבי', 'נשר', 'תנין', 'פנתר', 'דולפין'];
-  var TICK_MS = 1000 / 30;        // 30 צעדי לוגיקה בשנייה (קבוע)
-  var RESPAWN_TICKS = 90;         // ~3 שניות
-  var VIEW_UNITS = 24;            // כמה יחידות עולם רואים לאורך הצלע הקצרה
+  var TICK_MS = 1000 / 60;        // 60 צעדי לוגיקה בשנייה (קבוע), רק בזמן משחק פעיל
+  var RESPAWN_TICKS = 180;        // ~3 שניות
+  // זום: אורך אלכסון המסך ביחידות עולם. מתחיל קרוב (≈44 רוחבי שובל) ומתרחק בהדרגה ככל שהשטח גדל.
+  var VIEW_DIAG_MIN = 36, VIEW_DIAG_MAX = 52, viewDiag = VIEW_DIAG_MIN;
 
   // ---------- מצב ----------
   var canvas = $('game'), ctx = canvas.getContext('2d', { alpha: false });
@@ -38,9 +40,9 @@
     el.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S[key] = parse ? parse(b.dataset.v) : b.dataset.v; paint(); save('kovesh.settings', S); });
     paint();
   }
-  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens');
+  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens'); seg('ctrlSeg', 'ctrl');
   $('nameInput').value = S.name;
-  $('joyChk').checked = S.joy; $('miniChk').checked = S.mini; $('vibChk').checked = S.vib;
+  $('miniChk').checked = S.mini; $('vibChk').checked = S.vib;
 
   function buildAvatarPick() {
     var el = $('avatarPick'); el.innerHTML = '';
@@ -68,7 +70,7 @@
   $('helpBtn').onclick = function () { show('help'); };
   $('helpBack').onclick = function () { show('menu'); };
   $('settingsBack').onclick = function () {
-    S.joy = $('joyChk').checked; S.mini = $('miniChk').checked; S.vib = $('vibChk').checked;
+    S.mini = $('miniChk').checked; S.vib = $('vibChk').checked;
     save('kovesh.settings', S); show('menu');
   };
   $('resetBest').onclick = function () { if (confirm('לאפס את השיאים?')) { BEST = { pct: 0, kills: 0 }; save('kovesh.best', BEST); showBest(); } };
@@ -195,6 +197,7 @@
     var ticks = 0;
     while (acc >= TICK_MS && ticks < 6) { tick(); acc -= TICK_MS; ticks++; }
     if (ticks) flushTerrain();
+    updateZoom(dt);
     render(Math.min(1, acc / TICK_MS), now);
     if (now - lastHud > 400) { lastHud = now; updateHud(false); }
   }
@@ -207,7 +210,7 @@
       if (vx || vy) me.target = Math.atan2(vy, vx);
       me.turnInput = (keysHeld.KeyD ? 1 : 0) - (keysHeld.KeyA ? 1 : 0);
     }
-    for (var k = 0; k < ps.length; k++) if (ps[k].alive && ps[k].isBot) AI.think(g, ps[k], S.diff);
+    for (var k = 0; k < ps.length; k++) if (ps[k].alive && ps[k].isBot && (g.tickNo + ps[k].id) % g.AI_EVERY === 0) AI.think(g, ps[k], S.diff);
     g.step();
     for (var e = 0; e < g.events.length; e++) handleEvent(g.events[e]);
     g.events.length = 0;
@@ -241,13 +244,22 @@
     DPR = Math.min(window.devicePixelRatio || 1, S.dpr || 2);
     W = window.innerWidth; H = window.innerHeight;
     canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
-    unitPx = Math.max(12, Math.min(W, H) / VIEW_UNITS) * DPR;
+    updateZoom(0);
+    if (drag) drag.setCenter(W / 2, H / 2);
     Avatars.clear();
     layer = null;
     if (state === 'paused' || state === 'over') render(1, performance.now());
   }
   window.addEventListener('resize', function () { if (g) resize(); });
 
+  /* זום רך: היעד תלוי באחוז השטח (מדרגות של 5%), התקרבות/התרחקות בקבוע זמן ~0.4 שנ' */
+  function updateZoom(dtMs) {
+    var pct = me && g ? g.pct(me) : 0, f = Math.min(1, Math.floor(pct / 5) * 5 / 40);
+    var target = VIEW_DIAG_MIN + (VIEW_DIAG_MAX - VIEW_DIAG_MIN) * f;
+    viewDiag = dtMs ? viewDiag + (target - viewDiag) * Math.min(1, dtMs / 400) : target;
+    var px = Math.max(12, Math.hypot(W, H) / viewDiag) * DPR;
+    if (Math.abs(px - unitPx) > 0.03 * unitPx || (!dtMs && px !== unitPx)) { unitPx = px; layer = null; } // מדרגות של 3% – פחות ציורים מחדש של השכבה
+  }
   function lerp(a, b, t) { return a + (b - a) * t; }
 
   /* שכבת רקע+שטח בגודל המסך + שוליים. מצוירת מחדש רק כשהמצלמה יוצאת מהשוליים
@@ -442,30 +454,35 @@
 
   // גרירה יחסית (ברירת מחדל) / ג'ויסטיק צף – ראו js/input.js. הקלט מוחל מיד על כיוון המטרה,
   // והציור משתמש בכיוון העדכני ביותר, כך שאין המתנה לצעד הבא.
-  var touchId = null, joyBase = $('joyBase'), joyKnob = $('joyKnob'), drag = new DragInput(S.sens, S.joy ? 'joy' : 'drag');
+  var touchId = null, joyBase = $('joyBase'), joyKnob = $('joyKnob'), drag = new DragInput(S.sens, S.ctrl);
   function joyRest() {
     joyBase.style.left = (W - 95) + 'px'; joyBase.style.top = (H - 110) + 'px';
     joyKnob.style.transform = ''; joyBase.classList.remove('active');
   }
-  function joySetup() { drag.set(S.sens, S.joy ? 'joy' : 'drag'); joyBase.classList.toggle('hidden', !S.joy); if (S.joy) joyRest(); }
+  function isJoy() { return S.ctrl === 'joy'; }
+  function joySetup() { drag.set(S.sens, S.ctrl); drag.setCenter(W / 2, H / 2); joyBase.classList.toggle('hidden', !isJoy()); if (isJoy()) joyRest(); }
+  function steer(a) { if (a != null && me && me.alive) me.target = a; }
   function onDown(e) {
     if (state !== 'play' || touchId !== null) return;
     e.preventDefault();
-    touchId = e.pointerId; drag.down(e.clientX, e.clientY);
+    touchId = e.pointerId; steer(drag.down(e.clientX, e.clientY));
     try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
-    if (S.joy) { joyBase.style.left = e.clientX + 'px'; joyBase.style.top = e.clientY + 'px'; joyKnob.style.transform = ''; joyBase.classList.add('active'); }
+    if (isJoy()) { joyBase.style.left = e.clientX + 'px'; joyBase.style.top = e.clientY + 'px'; joyKnob.style.transform = ''; joyBase.classList.add('active'); }
   }
   function onMove(e) {
-    if (e.pointerId !== touchId || state !== 'play') return;
+    if (state !== 'play') return;
+    // עכבר במצב הצבעה: מכוון גם בלי לחיצה (ריחוף)
+    if (touchId === null && e.pointerType === 'mouse' && S.ctrl === 'point') { steer(drag.aim(e.clientX, e.clientY)); return; }
+    if (e.pointerId !== touchId) return;
     e.preventDefault();
     var list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
     if (!list || !list.length) list = [e];
     var a = null;
     for (var i = 0; i < list.length; i++) { var r = drag.move(list[i].clientX, list[i].clientY); if (r != null) a = r; }
-    if (a != null && me && me.alive) me.target = a;
-    if (S.joy) joyKnob.style.transform = 'translate(' + drag.kx + 'px,' + drag.ky + 'px)';
+    steer(a);
+    if (isJoy()) joyKnob.style.transform = 'translate(' + drag.kx + 'px,' + drag.ky + 'px)';
   }
-  function endTouch(e) { if (e.pointerId !== touchId) return; touchId = null; drag.up(); if (S.joy) joyRest(); }
+  function endTouch(e) { if (e.pointerId !== touchId) return; touchId = null; drag.up(); if (isJoy()) joyRest(); } // הכיוון האחרון נשמר
   canvas.addEventListener('pointerdown', onDown, { passive: false });
   canvas.addEventListener('pointermove', onMove, { passive: false });
   canvas.addEventListener('pointerup', endTouch);

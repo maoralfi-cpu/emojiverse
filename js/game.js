@@ -11,8 +11,10 @@
     this.CELL = 0.5;
     this.G = Math.round(this.W / this.CELL);
     this.SPEED = opts.speed || 9.75;    // יחידות לשנייה
-    this.DT = 1 / 30;                   // צעד לוגיקה (30 בשנייה)
-    this.TURN = opts.turn || 10.5;      // סיבוב מקסימלי (~600°/ש'), רדיאנים לשנייה
+    this.DT = 1 / 60;                   // צעד לוגיקה (60 בשנייה, כמו קצב המסך)
+    this.TURN_PER_UNIT = 0.7;           // סיבוב מקסימלי לכל יחידת דרך (רדיוס סיבוב מינימלי ≈1.43 יח' ≈ 1.8 רוחבי שובל)
+    this.TURN = opts.turn || this.SPEED * this.TURN_PER_UNIT; // ≈6.8 רד'/ש' (~390°/ש') במהירות ברירת המחדל
+    this.AI_EVERY = 2;                  // הבוטים חושבים כל צעד שני (30 בשנייה) – חוסך מעבד
     this.HIT = 0.5;                     // מרחק פגיעה בשובל
     this.HEADON = 1.2;                  // מרחק התנגשות ראש בראש
     this.SPAWN_R = 3.2;
