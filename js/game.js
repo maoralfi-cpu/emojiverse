@@ -239,6 +239,9 @@
   P.capture = function (p) {
     var id = p.id, t = p.trail, C = this.CELL, G = this.G, k;
     var step = C * 0.5;
+    // v8: ראשים של כל השאר לפני הכיבוש (תא עטוף + הבעלים הקודם) – לבדיקת "נכלא"
+    var heads = [];
+    for (k = 0; k < this.players.length; k++) { var hq = this.players[k]; if (hq !== p && hq.alive) { var hc = this.cellAt(hq.x, hq.y); heads.push(hq, hc, this.owner[hc]); } }
     for (k = 0; k + 3 < t.length; k += 2) {
       var ax = t[k], ay = t[k + 1], bx = t[k + 2], by = t[k + 3];
       var len = Math.hypot(bx - ax, by - ay), m = Math.max(1, Math.ceil(len / step));
@@ -246,7 +249,7 @@
     }
     p.trail = [];
     var comps = this.components(id);
-    if (comps.count <= 1) { this.events.push({ type: 'capture', player: p, cells: 0 }); return 0; }
+    if (comps.count <= 1) { this.enclosed(p, heads); this.events.push({ type: 'capture', player: p, cells: 0 }); return 0; }
     var big = 0; for (k = 1; k < comps.count; k++) if (comps.size[k] > comps.size[big]) big = k;
     var owner = this.owner, mark = this._mark, base = comps.base, n = owner.length, gained = 0, victims = [];
     for (var j = 0; j < n; j++) {
@@ -256,12 +259,20 @@
       this.setOwner(j, id); gained++;
       if (prev && victims.indexOf(prev) < 0) victims.push(prev);
     }
+    this.enclosed(p, heads);
     for (k = 0; k < victims.length; k++) {
       var vp = this.players[victims[k] - 1];
       if (vp.alive && this.counts[vp.id] <= 0) this.kill(vp, p, 'territory');
     }
     this.events.push({ type: 'capture', player: p, cells: gained });
     return gained;
+  };
+  /* v8: מי שהראש שלו נמצא בתא שהפך עכשיו לשל הכובש – נכלא ונפסל (גם אם יש לו שטח במקום אחר) */
+  P.enclosed = function (p, heads) {
+    for (var k = 0; k < heads.length; k += 3) {
+      var q = heads[k];
+      if (q.alive && heads[k + 2] !== p.id && this.owner[heads[k + 1]] === p.id) this.kill(q, p, 'enclosed');
+    }
   };
   /* רכיבי קשירות של התאים שאינם של id (4 שכנים, עוטף). mark[i] = base + מס' רכיב */
   P.components = function (id) {

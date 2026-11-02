@@ -369,6 +369,7 @@
       Core.effect(v.x, v.y, v.color);
       if (m.r === 'left') { Core.feed(Core.nm(v) + ' עזב/ה את המשחק'); v.gone = true; return; }
       if (v === Core.me) Core.myDeath({ reason: m.r, killer: by });
+      else if (m.r === 'enclosed' && by) Core.feed(Core.nm(v) + ' נכלא/ה בשטח של ' + (by === Core.me ? 'אותך! ⚔️' : Core.nm(by)));
       else if (by === Core.me) Core.feed('הבסת את ' + Core.nm(v) + '! ⚔️');
       else if (by) Core.feed(Core.nm(by) + ' הביס את ' + Core.nm(v));
     }

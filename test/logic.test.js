@@ -338,6 +338,34 @@ function frozen(p) { p.speed = 0; }
   go(g, a, R, 2); go(g, a, D, 7);
   ok(a.alive && !a.trail.length, 'וחזרה אליו סוגרת לולאה כרגיל');
 }
+
+console.log('v8: נכלא בתוך לולאה');
+{ // ראש בתוך הלולאה, ויש לו שטח במקום אחר => נפסל, נזקף לכובש
+  const g = new Game({ size: 80, rand: seeded(61) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 60, y: 60 });
+  const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); if (b.alive) { b.x = b.px = 28; b.y = b.py = 25; b.trail = []; b.h = b.target = 0; } } };
+  let ev = null; const ostep = g.step.bind(g); g.step = () => { ostep(); for (const e of g.events) if (e.type === 'death' && e.victim === b) ev = e; g.events.length = 0; };
+  goA(R, 14); goA(D, 10); goA(L, 14); goA(U, 8);
+  ok(a.alive && !b.alive && ev && ev.reason === 'enclosed' && ev.killer === a && a.kills === 1, 'נכלא (עם שטח במקום אחר): נפסל, נזקף לכובש');
+  ok(g.counts[b.id] === 0, 'השטח שנשאר לו במקום אחר נמחק');
+}
+{ // מחוץ ללולאה – לא נפגע
+  const g = new Game({ size: 80, rand: seeded(62) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 60, y: 60 });
+  const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); b.x = b.px = 45; b.y = b.py = 25; b.trail = []; } };
+  goA(R, 14); goA(D, 10); goA(L, 14); goA(U, 8);
+  ok(a.alive && b.alive && g.counts[b.id] > 0, 'מחוץ ללולאה – לא נפגע');
+}
+{ // ראש על התפר בתוך לולאה שחוצה את התפר
+  const g = new Game({ size: 80, rand: seeded(63) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 72, y: 20 }); g.spawn(b, { x: 40, y: 60 });
+  const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); if (b.alive) { b.x = b.px = 0.1; b.y = b.py = 25; b.trail = []; } } };
+  goA(R, 16); goA(D, 10); goA(L, 16); goA(U, 8);
+  ok(a.alive && !b.alive && a.kills === 1, 'ראש בדיוק על התפר בתוך הלולאה – נכלא');
+}
 console.log('v8: הולדה בטוחה');
 {
   const g = new Game({ size: 100, rand: seeded(41) });

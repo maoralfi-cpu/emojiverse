@@ -290,13 +290,14 @@
       if (v === me && mode === 'solo') { gameOver(ev); return; }
       if (v === me) { myDeath(ev); return; }
       if (ev.reason === 'left') { feed(nm(v) + ' עזב/ה את המשחק'); return; }
+      if (ev.reason === 'enclosed') { feed(nm(v) + ' נכלא/ה בשטח של ' + (ev.killer === me ? 'אותך' : nm(ev.killer)) + (ev.killer === me ? '! ⚔️' : '')); return; }
       if (ev.killer === me) feed('הבסת את ' + nm(v) + '! ⚔️');
       else if (ev.killer) feed(nm(ev.killer) + ' הביס את ' + nm(v));
     }
   }
   function myDeath(ev) {
     if (S.vib && navigator.vibrate) try { navigator.vibrate(150); } catch (e) {}
-    var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש' };
+    var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש', enclosed: 'נכלאת בשטח' };
     feed('נפסלת (' + (reasons[ev.reason] || '') + (ev.killer ? ' – ' + nm(ev.killer) : '') + ') · חוזרים בעוד 3 שניות');
   }
   function nm(p) { return (p.emoji ? p.emoji + ' ' : '') + p.name; }
@@ -521,7 +522,7 @@
     if (best > BEST.pct) BEST.pct = best;
     if (kills > BEST.kills) BEST.kills = kills;
     save('kovesh.best', BEST);
-    var reasons = { self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש' };
+    var reasons = { self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש', enclosed: 'נכלאת בתוך לולאה' };
     var r = reasons[ev.reason] || '';
     if (ev.killer) r += ' – ' + nm(ev.killer);
     $('overReason').textContent = r;
