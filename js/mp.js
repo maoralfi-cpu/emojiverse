@@ -250,7 +250,9 @@
       else Net.encodeSnap(g, tracker, 0, false); // שומרים את המעקב מעודכן גם בלי לקוחות
     },
     onEvent: function (ev) {
-      if (ev.type === 'death') broadcast({ t: 'ev', k: 'death', v: ev.victim.id, by: ev.killer ? ev.killer.id : 0, r: ev.reason });
+      if (ev.type === 'death') broadcast({ t: 'ev', k: 'death', v: ev.victim.id, by: ev.killer ? ev.killer.id : 0, r: ev.reason, b: ev.box ? ev.box.map(function (z) { return Math.round(z * 10) / 10; }) : null });
+      // v9: כיבוש – תאים, תאים שנלקחו מאחרים, הקורבן העיקרי ותיבה תוחמת (לאפקט זהה אצל כולם)
+      else if (ev.type === 'capture' && ev.cells > 0) broadcast({ t: 'ev', k: 'cap', p: ev.player.id, c: ev.cells, tk: ev.taken || 0, vi: ev.victim || 0, b: ev.box ? ev.box.map(function (z) { return Math.round(z * 10) / 10; }) : null });
     },
     roundOver: function () {
       var g = Core.game; lastRank = Net.ranking(g);
@@ -274,8 +276,9 @@
     (rank || []).forEach(function (r, i) {
       var li = document.createElement('li');
       var img = document.createElement('span'); img.className = 'emo-s'; img.textContent = r.emoji || '🙂';
+      var dot = document.createElement('span'); dot.className = 'cdot'; if (r.color) dot.style.background = r.color;
       var medal = ['🥇', '🥈', '🥉'][i] || (i + 1) + '.';
-      li.appendChild(document.createTextNode(medal + ' ')); li.appendChild(img);
+      li.appendChild(document.createTextNode(medal + ' ')); li.appendChild(dot); li.appendChild(img);
       var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name; li.appendChild(nm);
       var st = document.createElement('span'); st.className = 'p'; st.textContent = r.pct.toFixed(1) + '% · ⚔️' + r.kills; li.appendChild(st);
       if (r.id === myPid) li.classList.add('me');
@@ -364,9 +367,10 @@
     else if (m.t === 'ev') {
       var g2 = Core.game; if (!g2) return;
       var v = g2.players[m.v - 1]; if (!v) return;
+      if (m.k === 'cap') { Core.fxCapture(v, m.c, m.tk, m.vi, m.b); return; }
       if (m.k === 'left') { Core.feed(Core.nm(v) + ' עזב/ה את המשחק'); return; }
       var by = m.by ? g2.players[m.by - 1] : null;
-      Core.effect(v.x, v.y, v.color);
+      Core.fxDeath(v, by, m.r, m.b);
       if (m.r === 'left') { Core.feed(Core.nm(v) + ' עזב/ה את המשחק'); v.gone = true; return; }
       if (v === Core.me) Core.myDeath({ reason: m.r, killer: by });
       else if (m.r === 'enclosed' && by) Core.feed(Core.nm(v) + ' נכלא/ה בשטח של ' + (by === Core.me ? 'אותך! ⚔️' : Core.nm(by)));

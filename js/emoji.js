@@ -36,7 +36,7 @@
     var x = c.getContext('2d'), r = size / 2;
     x.fillStyle = color; x.beginPath(); x.arc(r, r, r * 0.92, 0, Math.PI * 2); x.fill();
     x.lineWidth = Math.max(1.5, size * 0.07); x.strokeStyle = outline || 'rgba(46,52,64,.45)'; x.beginPath(); x.arc(r, r, r * 0.92 - x.lineWidth / 2, 0, Math.PI * 2); x.stroke();
-    var g = glyph(e, Math.round(size * 0.62));
+    var g = glyph(e, Math.round(size * 0.52));   // v9: אימוג'י קטן ב-~16% בתוך אותו עיגול
     x.drawImage(g, r - g.width / 2, r - g.height / 2);
     return (cache[k] = c);
   }
@@ -45,13 +45,18 @@
     var r = size / 2, b = badge(e, size, color, outline);
     ctx.fillStyle = 'rgba(46,52,64,.16)';
     ctx.beginPath(); ctx.ellipse(x, y + r * 0.95, r * 0.8, r * 0.24, 0, 0, Math.PI * 2); ctx.fill();
-    // חץ כיוון קטן מחוץ לעיגול
-    var c = Math.cos(heading), s = Math.sin(heading), tip = r * 1.42, base = r * 0.9, w = r * 0.42;
-    ctx.fillStyle = outline || color; ctx.beginPath();
-    ctx.moveTo(x + c * tip, y + s * tip);
-    ctx.lineTo(x + c * base - s * w, y + s * base + c * w);
-    ctx.lineTo(x + c * base + s * w, y + s * base - c * w);
-    ctx.closePath(); ctx.fill();
+    // v9: "זיז" כיוון קטן – משולש מלא בצבע השחקן, צמוד לשפת העיגול (בלי חץ). heading=null => בלי זיז (אפקטים)
+    var c = 1, s = 0;
+    if (heading != null) {
+      c = Math.cos(heading); s = Math.sin(heading);
+      var tip = r * 1.2, base = r * 0.86, w = r * 0.22;
+      ctx.fillStyle = color; ctx.strokeStyle = outline || color; ctx.lineWidth = Math.max(1, r * 0.06); ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x + c * tip, y + s * tip);
+      ctx.lineTo(x + c * base - s * w, y + s * base + c * w);
+      ctx.lineTo(x + c * base + s * w, y + s * base - c * w);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
     // הטיה עדינה (עד ~13°): נוטה למעלה/למטה לפי התנועה, בלי להפוך את האימוג'י
     var tilt = Math.atan2(s, Math.abs(c) + 1e-6) * 0.15 * (c >= 0 ? 1 : -1);
     ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);

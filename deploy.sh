@@ -8,6 +8,7 @@ cd "$(dirname "$0")"
 PAGES_URL="https://maoralfi-cpu.github.io/emojiverse"
 node test/logic.test.js >/dev/null || { echo "בדיקות הלוגיקה נכשלו – לא פורסים"; exit 1; }
 node test/net.test.js >/dev/null || { echo "בדיקות הרשת נכשלו – לא פורסים"; exit 1; }
+node test/fx.test.js >/dev/null || { echo "בדיקות האפקטים נכשלו – לא פורסים"; exit 1; }
 STAMP=$(date +%Y%m%d%H%M%S)
 sed -i "s/const VERSION = '[a-z]*-[^']*'/const VERSION = 'emojiverse-${STAMP}'/" sw.js
 grep -q "emojiverse-${STAMP}" sw.js || { echo "עדכון גרסת המטמון נכשל"; exit 1; }

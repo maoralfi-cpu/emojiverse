@@ -6,7 +6,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------- הגדרות ושיאים ----------
-  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 6, emoji: '', mini: true, vib: true, sens: 'medium' };
+  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 6, emoji: '', mini: true, vib: true, sens: 'medium', fx: 'full' };
   var S = load('kovesh.settings', DEFAULTS);
   if ((S.v || 0) < 4) { S.ctrl = S.joy ? 'joy' : 'point'; if (S.fps < 60) S.fps = 60; S.v = 4; save('kovesh.settings', S); } // מעבר ל-v4
   if ((S.v || 0) < 6) { S.emoji = ''; S.v = 6; save('kovesh.settings', S); } // v6: דמויות אימוג'י – הבחירה הישנה => אקראי
@@ -42,7 +42,7 @@
     el.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S[key] = parse ? parse(b.dataset.v) : b.dataset.v; paint(); save('kovesh.settings', S); });
     paint();
   }
-  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens'); seg('ctrlSeg', 'ctrl');
+  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens'); seg('ctrlSeg', 'ctrl'); seg('fxSeg', 'fx');
   $('nameInput').value = S.name;
   $('miniChk').checked = S.mini; $('vibChk').checked = S.vib;
 
@@ -63,6 +63,26 @@
     $('best').textContent = t; $('overBest').textContent = t;
   }
   showBest();
+
+  /* v9: רמת אפקטים בפועל – "מופחת" אוטומטית כשמצב חיסכון 30FPS או כשהמערכת מבקשת פחות תנועה */
+  var reducedMotion = false; try { reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  function fxLevel() { if (S.fx === 'off') return 'off'; if (S.fx === 'reduced' || S.fps === 30 || reducedMotion) return 'reduced'; return 'full'; }
+  function buzz(ms) { if (S.vib && navigator.vibrate) try { navigator.vibrate(ms); } catch (e) {} }
+  function fxDeath(v, killer, reason, box) {
+    FX.level = fxLevel();
+    var t = v.trail && v.trail.length ? v.trail : (v.lastTrail || []);
+    FX.death({ reason: reason, x: v.x, y: v.y, color: v.color, emoji: v.emoji, outline: lineCss[v.id], trail: t,
+      killer: killer ? { x: killer.x, y: killer.y, color: killer.color } : null, cutX: killer && reason === 'trail' ? killer.x : null, cutY: killer && reason === 'trail' ? killer.y : null,
+      box: box, byMe: killer === me && v !== me }, performance.now());
+    if (killer === me && v !== me) buzz(30);
+  }
+  function fxCapture(p, cells, taken, victimId, box) {
+    FX.level = fxLevel();
+    var gp = cells / g.owner.length * 100, tp = taken / g.owner.length * 100, vic = victimId ? g.players[victimId - 1] : null;
+    var kd = FX.capture({ x: p.x, y: p.y, cells: cells, taken: taken, takenPct: tp, gainPct: gp, color: lineCss[p.id] || p.color, fill: p.color, victimColor: vic ? vic.color : null, box: box }, performance.now());
+    if (kd === 'big' && p === me) buzz(20);
+    return kd;
+  }
 
   function show(id) {
     [].forEach.call(document.querySelectorAll('section.screen'), function (el) { el.classList.toggle('hidden', el.id !== id); });
@@ -145,7 +165,7 @@
   function beginPlay() {
     paths = [];
     setupMinimap();
-    effects = []; camX = me.x; camY = me.y; layer = null;
+    effects = []; FX.clear(); camX = me.x; camY = me.y; layer = null;
     $('hudAvatar').src = avatarURLs[me.id];
     $('feed').innerHTML = ''; lastBoardKey = '';
     $('minimap').classList.toggle('hidden', !S.mini);
@@ -283,9 +303,14 @@
   }
 
   function handleEvent(ev) {
+    if (ev.type === 'capture') {
+      if (ev.cells > 0) fxCapture(ev.player, ev.cells, ev.taken || 0, ev.victim, ev.box);
+      if (mode === 'host' && MPH) MPH.onEvent(ev);
+      return;
+    }
     if (ev.type === 'death') {
       var v = ev.victim;
-      effects.push({ x: v.x, y: v.y, color: v.color, t0: performance.now() });
+      fxDeath(v, ev.killer, ev.reason, ev.box);
       if (mode === 'host' && MPH) MPH.onEvent(ev);
       if (v === me && mode === 'solo') { gameOver(ev); return; }
       if (v === me) { myDeath(ev); return; }
@@ -296,7 +321,7 @@
     }
   }
   function myDeath(ev) {
-    if (S.vib && navigator.vibrate) try { navigator.vibrate(150); } catch (e) {}
+    buzz(150);
     var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש', enclosed: 'נכלאת בשטח' };
     feed('נפסלת (' + (reasons[ev.reason] || '') + (ev.killer ? ' – ' + nm(ev.killer) : '') + ') · חוזרים בעוד 3 שניות');
   }
@@ -408,6 +433,11 @@
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(layer, Math.round((layerX - vx0) * unitPx), Math.round((layerY - vy0) * unitPx));
+    // v9: אפקטים – שלב "מתחת" (גל כיבוש, פעימת כליאה) לפני השובלים, כדי לא להסתיר אותם
+    var fdt = lastRender ? Math.min(0.05, (now - lastRender) / 1000) : 0; lastRender = now;
+    FX.update(fdt);
+    fxView.camX = camX; fxView.camY = camY; fxView.vx0 = vx0; fxView.vy0 = vy0; fxView.vw = vw; fxView.vh = vh; fxView.unitPx = unitPx;
+    FX.draw(ctx, fxView, now, 'under', Emoji);
 
     // שובלים – קווים מעוגלים
     ctx.setTransform(unitPx, 0, 0, unitPx, -vx0 * unitPx, -vy0 * unitPx);
@@ -451,16 +481,10 @@
         ctx.fillStyle = '#3b4252'; ctx.fillText(p.name, hx, hy - size * 0.62);
       }
     }
-    // אפקט פסילה
-    for (var e = effects.length - 1; e >= 0; e--) {
-      var f = effects[e], age = (now - f.t0) / 600;
-      if (age >= 1) { effects.splice(e, 1); continue; }
-      ctx.globalAlpha = 1 - age; ctx.strokeStyle = f.color; ctx.lineWidth = unitPx * 0.3;
-      var fx = camX + g.wd(f.x - camX), fy = camY + g.wd(f.y - camY);
-      ctx.beginPath(); ctx.arc((fx - vx0) * unitPx, (fy - vy0) * unitPx, unitPx * (0.6 + age * 3), 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
+    // v9: אפקטים – שלב "מעל" (פסילות, טקסט צף, חלקיקים)
+    FX.draw(ctx, fxView, now, 'over', Emoji);
   }
+  var lastRender = 0, fxView = { camX: 0, camY: 0, vx0: 0, vy0: 0, vw: 0, vh: 0, unitPx: 1, wd: function (d) { return g.wd(d); } };
 
   function updateHud(force) {
     if (!g) return;
@@ -472,11 +496,17 @@
     var key = list.map(function (p) { return p.id + ':' + g.pct(p).toFixed(1); }).join(',');
     if (key !== lastBoardKey || force) {
       lastBoardKey = key;
-      var html = '';
+      // v9: נקודת צבע השטח ליד כל שם (נבנה ב-DOM: ה-CSP חוסם style בתוך HTML)
+      var board = $('board'); board.textContent = '';
       list.forEach(function (p) {
-        html += '<li class="' + (p === me ? 'me' : '') + '"><span class="emo-s">' + p.emoji + '</span>' + esc(p.name) + '<span class="p">' + g.pct(p).toFixed(1) + '%</span></li>';
+        var li = document.createElement('li'); if (p === me) li.className = 'me';
+        var dot = document.createElement('span'); dot.className = 'cdot'; dot.style.background = p.color; dot.style.borderColor = lineCss[p.id] || p.color;
+        var em = document.createElement('span'); em.className = 'emo-s'; em.textContent = p.emoji;
+        var pc = document.createElement('span'); pc.className = 'p'; pc.textContent = g.pct(p).toFixed(1) + '%';
+        li.appendChild(dot); li.appendChild(em); li.appendChild(document.createTextNode(p.name)); li.appendChild(pc);
+        li.style.borderInlineStartColor = lineCss[p.id] || p.color;
+        board.appendChild(li);
       });
-      $('board').innerHTML = html;
     }
     if (S.mini) {
       if (mmDirty) { mmCtx.putImageData(mmImg, 0, 0); mmDirty = false; }
@@ -610,12 +640,13 @@
     attach: function (h) { MPH = h; },
     settings: S, save: function () { save('kovesh.settings', S); },
     startMatch: startMatch, addMatchPlayer: addMatchPlayer, endRound: endRound, toMenu: toMenu, show: show, feed: feed,
-    effect: function (x, y, color) { effects.push({ x: x, y: y, color: color, t0: performance.now() }); },
+    effect: function () {},
+    fxDeath: fxDeath, fxCapture: fxCapture,
     myDeath: myDeath, nm: nm, stopLoop: stopLoop, startLoop: function () { if (state === 'play') startLoop(); },
     setState: function (st) { state = st; }, resize: resize,
     get game() { return g; }, get me() { return me; }, get state() { return state; }, get mode() { return mode; }, get match() { return match; },
     TICK_MS: TICK_MS
   };
   // חשיפה לבדיקות אוטומטיות בלבד
-  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, start: startGame, pause: pause };
+  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
 })();

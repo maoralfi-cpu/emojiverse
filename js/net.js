@@ -71,6 +71,7 @@
       var id = r.u8(), fl = r.u8(), st = { id: id, alive: !!(fl & 1), gone: !!(fl & 2), x: r.u16() / Q, y: r.u16() / Q, h: r.i16() / HQ, kills: r.u16() };
       var start = r.u16(), cnt = r.u16(), p = g.players[id - 1];
       var pts = p ? p.trail : [];
+      if (p && !st.alive && pts.length) p.lastTrail = pts.slice();   // v9: לאפקט "שבירת שובל" אצל הלקוח
       if (p) { if (pts.length > start * 2) pts.length = start * 2; else while (pts.length < start * 2) pts.push(st.x, st.y); }
       for (var i = 0; i < cnt; i++) {
         var x = r.u16() / Q, y = r.u16() / Q;

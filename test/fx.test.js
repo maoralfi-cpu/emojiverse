@@ -1,0 +1,31 @@
+// v9: בדיקות לוגיקת האפקטים (בחירה לפי סוג פסילה, תקרת המאגר, ספי כיבוש): node test/fx.test.js
+const FX = require('../js/fx.js');
+let pass = 0, fail = 0;
+function ok(c, m) { if (c) { pass++; console.log('  ✓', m); } else { fail++; console.log('  ✗', m); } }
+console.log('בחירת אפקט לפי סוג פסילה');
+const plans = {}; for (const r of ['trail', 'enclosed', 'head', 'self', 'territory', 'left']) plans[r] = FX.plan(r).join(',');
+ok(new Set(Object.values(plans)).size === 6, 'אפקט שונה לכל סוג: ' + JSON.stringify(plans));
+ok(plans.trail.includes('snap') && plans.enclosed.includes('cage') && plans.head.includes('shock') && plans.self.includes('dizzy') && plans.territory.includes('dissolve') && plans.left === 'fade', 'מיפוי צפוי (שבירה / כלוב / גל הדף / סחרחורת / התפוררות / דהייה)');
+ok(FX.plan('unknown').join() === 'fade', 'סיבה לא מוכרת – דהייה שקטה');
+console.log('מאגר חלקיקים');
+FX.level = 'full'; FX.clear();
+let added = 0; for (let i = 0; i < 1000; i++) if (FX.particle(0, 0, 1, 1, 1, 0.3, '#fff', 0)) added++;
+ok(added === 300 && FX.count() === 300, 'תקרה קשיחה: 300 חלקיקים (נדחו ' + (1000 - added) + ')');
+FX.update(0.5); ok(FX.count() === 300, 'חלקיקים חיים נשארים'); FX.update(0.6); ok(FX.count() === 0, 'אחרי שפג הזמן – כולם נמחקו (בלי הקצאות)');
+FX.level = 'reduced'; FX.clear(); for (let i = 0; i < 1000; i++) FX.particle(0, 0, 0, 0, 1, 0.3, '#fff', 0);
+ok(FX.count() === 110, 'מצב מופחת: תקרה 110');
+FX.level = 'off'; FX.clear(); FX.death({ reason: 'trail', x: 0, y: 0, color: '#f00', trail: [0, 0, 5, 0, 10, 0] }, 0);
+ok(FX.count() === 0 && FX.activeSpecials() === 0, 'כבוי: שום אפקט');
+FX.level = 'full'; FX.clear();
+FX.death({ reason: 'trail', x: 5, y: 5, color: '#f00', emoji: '🦊', trail: Array.from({ length: 200 }, (_, i) => i * 0.2), killer: { x: 6, y: 6, color: '#00f' }, byMe: true }, 0);
+ok(FX.count() > 20 && FX.activeSpecials() >= 3, 'שובל נחתך: רסיסים + ניצוץ + אימוג\'י עף + ⚔️ (' + FX.count() + ' חלקיקים, ' + FX.activeSpecials() + ' אפקטים)');
+for (let i = 0; i < 200; i++) FX.death({ reason: 'head', x: i, y: 0, color: '#0f0', emoji: '🐸' }, i);
+ok(FX.count() <= 300 && FX.activeSpecials() <= 40, 'עומס: עדיין בתוך התקרות (' + FX.count() + '/300, ' + FX.activeSpecials() + '/40)');
+console.log('ספי כיבוש');
+ok(FX.captureKind({ taken: 0, takenPct: 0, gainPct: 0.1 }) === 'none', 'כיבוש זעיר של שטח ריק – בלי אפקט');
+ok(FX.captureKind({ taken: 0, takenPct: 0, gainPct: 0.8 }) === 'small', 'שטח ריק – "+X%" קטן');
+ok(FX.captureKind({ taken: 900, takenPct: 2, gainPct: 3 }) === 'big', 'לקיחה של 2% מאחרים – אפקט גדול');
+ok(FX.captureKind({ taken: 650, takenPct: 1, gainPct: 1 }) === 'big', 'או ≥600 תאים מאחרים');
+ok(FX.captureKind({ taken: 100, takenPct: 0.3, gainPct: 1 }) === 'small', 'מעט משטח של אחרים – קטן');
+console.log(`\n${pass} עברו, ${fail} נכשלו`);
+process.exit(fail ? 1 : 0);

@@ -184,13 +184,13 @@
 
   P.kill = function (p, killer, reason) {
     if (!p.alive) return;
-    p.alive = false; p.deaths++; p.trail = [];
+    p.alive = false; p.deaths++; p.lastTrail = p.trail; p.trail = [];   // v9: השובל האחרון נשמר לאפקט "שבירה"
     if (this.counts[p.id] > 0) {
       var o = this.owner, n = o.length;
       for (var j = 0; j < n; j++) if (o[j] === p.id) this.setOwner(j, 0);
     }
     if (killer && killer !== p) killer.kills++;
-    this.events.push({ type: 'death', victim: p, killer: killer && killer !== p ? killer : null, reason: reason });
+    this.events.push({ type: 'death', victim: p, killer: killer && killer !== p ? killer : null, reason: reason, box: reason === 'territory' ? this._capBox : null });
   };
 
   /* מרחק מינימלי (בריבוע) מנקודה לשובל של q. skip = כמה מקטעים אחרונים לדלג; live = לכלול את המקטע אל הראש */
@@ -251,20 +251,28 @@
     var comps = this.components(id);
     if (comps.count <= 1) { this.enclosed(p, heads); this.events.push({ type: 'capture', player: p, cells: 0 }); return 0; }
     var big = 0; for (k = 1; k < comps.count; k++) if (comps.size[k] > comps.size[big]) big = k;
-    var owner = this.owner, mark = this._mark, base = comps.base, n = owner.length, gained = 0, victims = [];
+    var owner = this.owner, mark = this._mark, base = comps.base, n = owner.length, gained = 0, victims = [], taken = 0, vc = {};
+    var bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity, W = this.W;
     for (var j = 0; j < n; j++) {
       var c = mark[j] - base;
       if (c < 0 || c === big || owner[j] === id) continue;
       var prev = owner[j];
       this.setOwner(j, id); gained++;
-      if (prev && victims.indexOf(prev) < 0) victims.push(prev);
+      // v9: תיבה תוחמת (פרושה ליד הכובש) ותאים שנלקחו מאחרים – לאפקטים
+      var cx = (j % G + 0.5) * C, cy = (Math.floor(j / G) + 0.5) * C;
+      cx = p.x + wrapDelta(cx - p.x, W); cy = p.y + wrapDelta(cy - p.y, W);
+      if (cx < bx0) bx0 = cx; if (cx > bx1) bx1 = cx; if (cy < by0) by0 = cy; if (cy > by1) by1 = cy;
+      if (prev) { taken++; vc[prev] = (vc[prev] || 0) + 1; if (victims.indexOf(prev) < 0) victims.push(prev); }
     }
+    this._capBox = gained ? [bx0 - C, by0 - C, bx1 + C, by1 + C] : null;
+    var mainVictim = 0; for (var vk in vc) if (!mainVictim || vc[vk] > vc[mainVictim]) mainVictim = +vk;
     this.enclosed(p, heads);
     for (k = 0; k < victims.length; k++) {
       var vp = this.players[victims[k] - 1];
       if (vp.alive && this.counts[vp.id] <= 0) this.kill(vp, p, 'territory');
     }
-    this.events.push({ type: 'capture', player: p, cells: gained });
+    this.events.push({ type: 'capture', player: p, cells: gained, taken: taken, victim: mainVictim, box: this._capBox });
+    this._capBox = null;
     return gained;
   };
   /* v8: מי שהראש שלו נמצא בתא שהפך עכשיו לשל הכובש – נכלא ונפסל (גם אם יש לו שטח במקום אחר) */

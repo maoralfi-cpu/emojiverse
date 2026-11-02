@@ -149,3 +149,8 @@ button:active{transform:scale(.97)}
 /* לוגו Emojiverse */
 .card h1.logo{font-weight:900;letter-spacing:-.5px;color:#4c566a}
 .card h1.logo span{color:#5e81ac}
+
+/* v9: צבע השטח ליד השם */
+.cdot{display:inline-block;width:11px;height:11px;border-radius:50%;flex:0 0 11px;border:2px solid rgba(46,52,64,.35);box-sizing:border-box}
+#board li{border-inline-start:3px solid transparent;padding-inline-start:4px;border-radius:3px}
+#rankList .cdot{width:13px;height:13px;flex-basis:13px}

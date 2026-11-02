@@ -75,10 +75,12 @@
     <div class="col">
     <div class="label">רגישות שליטה</div>
     <div class="seg" id="sensSeg"><button data-v="low">נמוכה</button><button data-v="medium">בינונית</button><button data-v="high">גבוהה</button></div>
+    <div class="label">אפקטים</div>
+    <div class="seg" id="fxSeg"><button data-v="full">מלא</button><button data-v="reduced">מופחת</button><button data-v="off">כבוי</button></div>
     <div class="label">שיטת שליטה</div>
     <div class="seg" id="ctrlSeg"><button data-v="point">הצבעה</button><button data-v="drag">גרירה</button><button data-v="joy">ג'ויסטיק</button></div>
     <div class="checks"><label class="check"><input type="checkbox" id="miniChk"> מפה קטנה</label>
-    <label class="check"><input type="checkbox" id="vibChk"> רטט במוות</label></div>
+    <label class="check"><input type="checkbox" id="vibChk"> רטט</label></div>
     <button id="settingsBack" class="primary">שמור וחזור</button>
     <button id="resetBest" class="danger">איפוס שיאים</button>
     </div>
@@ -95,6 +97,7 @@
       <li>אם מישהו נוגע בשובל שלך – נפסלת. נגעת בשובל של יריב – הוא נפסל.</li>
       <li>אסור לגעת בשובל של עצמך. למפה אין קצוות: יוצאים מצד אחד – ונכנסים מהצד השני.</li>
       <li>מי שהראש שלו בתוך לולאה שנסגרה – נכלא ונפסל, גם אם יש לו שטח במקום אחר.</li>
+      <li>אפקטים: לכל סוג פסילה אפקט משלו, ולכיבוש גדול של שטח תפוס יש גל צבע ו"+%". אפשר להפחית או לכבות בהגדרות.</li>
       <li>ראש בראש: מי שבתוך השטח שלו שורד; מחוץ לשטח – בעל השובל הארוך נפסל.</li>
       <li><b>טלפון:</b> נוגעים במסך בכיוון שאליו רוצים לנוע – הדמות (במרכז המסך) פונה אל האצבע. אפשר להחליק את האצבע כדי לנווט; כשמרימים, הכיוון נשמר. (גרירה או ג'ויסטיק – בהגדרות.)</li>
       <li><b>מקלדת:</b> חיצים לכיוון (גם באלכסון), A/D לסיבוב, ‏P/Esc להשהיה.</li>
@@ -201,6 +204,7 @@
 <script src="js/input.js"></script>
 <script src="js/avatars.js"></script>
 <script src="js/emoji.js"></script>
+<script src="js/fx.js"></script>
 <script src="js/net.js"></script>
 <script src="js/main.js"></script>
 <script src="js/mp.js"></script>

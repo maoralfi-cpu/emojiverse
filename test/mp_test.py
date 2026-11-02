@@ -109,8 +109,13 @@ with sync_playwright() as p:
     R['emojis_unique_and_picked'] = len(set(emos)) == len(emos) and emos[1] == '🦊' and emos[2] == '🐸' and ev(c1, "window.__kovesh.game.players.map(p=>p.emoji).join()") == ','.join(emos)
     R['players_total_ok'] = hs['n'] == 5 and s1['n'] == 5
     # תנועה: נגיעה אצל נועה => הכיוון במארח משתנה
-    c1.touchscreen.tap(CX - 150, CY); c1.wait_for_timeout(300)
-    tgt = ev(host, "window.__kovesh.game.players[%d].target" % (s1['me'] - 1))
+    # הקלט עובר דרך רשת מקומית + הגבלת קצב: בודקים עד 1.5 שנ' (קודם: קריאה אחת אחרי 300ms – נכשל לפעמים)
+    c1.touchscreen.tap(CX - 150, CY)
+    tgt = None
+    for _ in range(10):
+        c1.wait_for_timeout(150)
+        tgt = ev(host, "window.__kovesh.game.players[%d].target" % (s1['me'] - 1))
+        if abs(abs(tgt) - math.pi) < 0.05: break
     R['client_input_reaches_host'] = abs(abs(tgt) - math.pi) < 0.05
     def cells(pg, pid): return ev(pg, 'window.__kovesh.game.counts[%d]' % pid)
     s2 = state(c2)
