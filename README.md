@@ -1,11 +1,15 @@
-# כובש – משחק כיבוש שטח (PWA, עובד בלי אינטרנט)
+# Emojiverse – משחק כיבוש שטח עם אימוג'י (PWA, עובד בלי אינטרנט)
+
+> השם הקודם: "כובש". התיקייה המקומית נשארה `/home/box/factory/code/territory-game/`. הריפו: `maoralfi-cpu/emojiverse`, והכתובת: https://maoralfi-cpu.github.io/emojiverse/ (הכתובת הישנה /kovesh/ כבר לא פעילה). מי שהתקין מהכתובת הישנה: למחוק את האייקון הישן ולהוסיף מחדש מהכתובת החדשה. מפתחות localStorage (`kovesh.settings`, `kovesh.best`) נשארו כמו שהם, כך שההגדרות והשיאים נשמרים (אותו origin).
+
+האייקון: כוכב-לכת סמיילי עם טבעת ונקודות צבע, מצויר בקוד (`tools/make_icons.py`), גרסה רגילה וגרסת maskable.
 
 משחק מקורי שנכתב מאפס (קוד, דמויות, אייקונים) ברעיון של "כיבוש שטח":
 מנווטים דמות בחופשיות (360°). מחוץ לשטח שלך היא משאירה שובל, וכשחוזרים לשטח – כל מה שהשובל הקיף נכבש.
 מי שנוגע בשובל שלך – פוסל אותך; נגעת בשובל של יריב – פסלת אותו.
 בלי פרסומות, בלי מעקב, בלי קריאות רשת, חוסך סוללה.
 
-**כתובת קבועה:** https://maoralfi-cpu.github.io/kovesh/
+**כתובת קבועה:** https://maoralfi-cpu.github.io/emojiverse/
 (גיבוי זמני: https://830440ee3ca547c4.flypod.page – פג ב-15.11.2026)
 
 ## התקנה בטלפון (סמסונג)
@@ -34,7 +38,7 @@
 
 **איך מתחילים:**
 1. ההורה (המארח): בתפריט לוחצים **"שחק משפחתי אונליין" ← "פתח חדר"**. מקבלים קוד של 4 תווים (למשל `K7RM`).
-2. לוחצים **"📤 שיתוף"** (או "וואטסאפ") ושולחים לילדים את הקישור `https://maoralfi-cpu.github.io/kovesh/?room=K7RM`.
+2. לוחצים **"📤 שיתוף"** (או "וואטסאפ") ושולחים לילדים את הקישור `https://maoralfi-cpu.github.io/emojiverse/?room=K7RM`.
 3. הילדים פותחים את הקישור ונכנסים ישר לחדר (או: "שחק משפחתי אונליין" ← מקלידים את הקוד ← "הצטרף לחדר").
 4. בלובי כל אחד כותב שם ובוחר אימוג'י (או 🎲 אקראי). כל אימוג'י שייך לשחקן אחד, וצבע השטח נקבע אוטומטית.
 5. המארח בוחר בוטים (**"בלי בוטים"** או 1–6), רמת בוטים (ברירת מחדל: קל) ואורך סיבוב (2/3/5 דקות, ברירת מחדל 3), ולוחץ **"התחל"**.
@@ -123,7 +127,7 @@ python3 -m http.server 8000      # ואז לפתוח http://localhost:8000
 ```bash
 node test/logic.test.js                                         # לוגיקה ובוטים
 /home/box/factory/tools/.venv/bin/python test/browser_test.py    # Chrome בתצוגת טלפון, מקומי
-/home/box/factory/tools/.venv/bin/python test/browser_test.py https://maoralfi-cpu.github.io/kovesh/
+/home/box/factory/tools/.venv/bin/python test/browser_test.py https://maoralfi-cpu.github.io/emojiverse/
 node test/net.test.js                                           # פרוטוקול הרשת
 /home/box/factory/tools/.venv/bin/python test/nobots_test.py     # משחק יחיד בלי בוטים
 /home/box/factory/tools/.venv/bin/python test/mp_test.py --local [URL]   # 3 טלפונים + 2 בני אדם בלי בוטים
@@ -145,7 +149,7 @@ node test/net.test.js                                           # פרוטוקו
 ./deploy.sh --flypod   # גם לגיבוי ב-flypod
 ```
 הסקריפט מריץ את בדיקות הלוגיקה, מעדכן את שם המטמון ב-sw.js (kovesh-<תאריך-שעה>), עושה commit ו-push לריפו
-https://github.com/maoralfi-cpu/kovesh (ענף main, Pages מהשורש), ומחכה עד שהגרסה החדשה מוגשת.
+https://github.com/maoralfi-cpu/emojiverse (ענף main, Pages מהשורש), ומחכה עד שהגרסה החדשה מוגשת.
 gh מחובר במחשב כ-maoralfi-cpu (האסימון ב-~/.config/gh/hosts.yml, מנוהל ע"י gh).
 - **flypod:** גיבוי זמני בלבד. מזהה האתר נמצא ב-.deploy-site, ואסימון הניהול ב-~/.config/flypod/projects.json.
 - **הגנה מהזרקות:** flypod מזריק לדף וידג'ט וסקריפט סטטיסטיקה. המשחק מבטל את הווידג'ט, ומדיניות CSP בדף חוסמת כל סקריפט חיצוני.

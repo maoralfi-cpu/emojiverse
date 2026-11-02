@@ -1,4 +1,4 @@
-/* כובש – משחק משפחתי אונליין: מארח-מחליט, עמית-לעמית (WebRTC) דרך PeerJS. נכתב מאפס.
+/* Emojiverse (לשעבר כובש) – משחק משפחתי אונליין: מארח-מחליט, עמית-לעמית (WebRTC) דרך PeerJS. נכתב מאפס.
    טלפון אחד "מארח" ומריץ את כל הסימולציה (כולל בוטים); האחרים שולחים רק כיוון רצוי
    ומקבלים תמונות מצב (~20 בשנייה, שטח כדלתות). שרת התיאום הציבורי של PeerJS משמש רק
    ליצירת החיבור; המשחק עצמו עובר ישירות בין הטלפונים (או דרך שרת ה-TURN הציבורי של PeerJS אם צריך).
@@ -86,8 +86,8 @@
   }
   segBind('mpBotsSeg', 'bots', Number); segBind('mpDiffSeg', 'diff'); segBind('mpTimeSeg', 'minutes', Number);
   $('shareBtn').onclick = function () {
-    var url = shareURL(), text = 'בואו לשחק איתי כובש! קוד החדר: ' + code;
-    if (navigator.share) navigator.share({ title: 'כובש – משחק משפחתי', text: text, url: url }).catch(function () {});
+    var url = shareURL(), text = 'בואו לשחק איתי Emojiverse! קוד החדר: ' + code;
+    if (navigator.share) navigator.share({ title: 'Emojiverse – משחק משפחתי', text: text, url: url }).catch(function () {});
     else { try { navigator.clipboard.writeText(url); msg('lobbyMsg', 'הקישור הועתק'); } catch (e) {} }
   };
   function shareURL() { return location.origin + location.pathname.replace(/index\.html$/, '') + '?room=' + code; }
@@ -96,7 +96,7 @@
     var isHost = role === 'host';
     $('roomCode').textContent = code;
     $('shareLink').value = shareURL();
-    $('waLink').href = 'https://wa.me/?text=' + encodeURIComponent('בואו לשחק איתי כובש! ' + shareURL());
+    $('waLink').href = 'https://wa.me/?text=' + encodeURIComponent('בואו לשחק איתי Emojiverse! ' + shareURL());
     $('shareBox').classList.toggle('hidden', false);
     var mine = L.players.filter(function (p) { return p.key === myKey; })[0];
     if (document.activeElement !== $('lobbyName')) $('lobbyName').value = mine ? mine.name : S.name || '';

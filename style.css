@@ -145,3 +145,7 @@ button:active{transform:scale(.97)}
   .col{min-width:0}
 }
 .card .field input{min-width:0;width:100%}.card .field{min-width:0}#shareBox .row button,#shareBox .row .btnlink{white-space:nowrap}
+
+/* לוגו Emojiverse */
+.card h1.logo{font-weight:900;letter-spacing:-.5px;color:#4c566a}
+.card h1.logo span{color:#5e81ac}

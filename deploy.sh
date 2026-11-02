@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# פריסה/עדכון של "כובש".
-#   ./deploy.sh            -> GitHub Pages (ראשי): https://maoralfi-cpu.github.io/kovesh/
+# פריסה/עדכון של "Emojiverse".
+#   ./deploy.sh            -> GitHub Pages (ראשי): https://maoralfi-cpu.github.io/emojiverse/
 #   ./deploy.sh --flypod   -> גם ל-flypod.dev (גיבוי זמני, פג 14 יום בלי login)
 # מריץ בדיקות, מעדכן את גרסת המטמון ב-sw.js (כדי שהטלפון יקבל את העדכון), עושה commit ו-push.
 set -euo pipefail
 cd "$(dirname "$0")"
-PAGES_URL="https://maoralfi-cpu.github.io/kovesh"
+PAGES_URL="https://maoralfi-cpu.github.io/emojiverse"
 node test/logic.test.js >/dev/null || { echo "בדיקות הלוגיקה נכשלו – לא פורסים"; exit 1; }
 node test/net.test.js >/dev/null || { echo "בדיקות הרשת נכשלו – לא פורסים"; exit 1; }
 STAMP=$(date +%Y%m%d%H%M%S)
-sed -i "s/const VERSION = 'kovesh-[^']*'/const VERSION = 'kovesh-${STAMP}'/" sw.js
-grep -q "kovesh-${STAMP}" sw.js || { echo "עדכון גרסת המטמון נכשל"; exit 1; }
+sed -i "s/const VERSION = '[a-z]*-[^']*'/const VERSION = 'emojiverse-${STAMP}'/" sw.js
+grep -q "emojiverse-${STAMP}" sw.js || { echo "עדכון גרסת המטמון נכשל"; exit 1; }
 git add -A
-git -c user.name="maoralfi-cpu" -c user.email="maoralfi-cpu@users.noreply.github.com" commit -qm "פריסה kovesh-${STAMP}" || true
+git -c user.name="maoralfi-cpu" -c user.email="maoralfi-cpu@users.noreply.github.com" commit -qm "פריסה emojiverse-${STAMP}" || true
 git push -q origin HEAD:main
 echo "נדחף ל-GitHub. ממתין לבניית Pages..."
 for i in $(seq 1 60); do
-  if curl -s "$PAGES_URL/sw.js" | grep -q "kovesh-${STAMP}"; then echo "Pages מעודכן"; break; fi
+  if curl -s "$PAGES_URL/sw.js" | grep -q "emojiverse-${STAMP}"; then echo "Pages מעודכן"; break; fi
   sleep 5
 done
 for f in "" manifest.webmanifest sw.js icons/icon-512.png js/mp.js js/net.js js/vendor/peerjs.min.js; do
@@ -28,4 +28,4 @@ if [[ "${1:-}" == "--flypod" ]]; then
   if [[ -s .deploy-site ]]; then npx -y flypod@latest update dist --site "$(cat .deploy-site)"
   else npx -y flypod@latest dist; fi
 fi
-echo "גרסה: kovesh-${STAMP}"
+echo "גרסה: emojiverse-${STAMP}"

@@ -4,12 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#e5e9f0">
-<meta name="description" content="כובש – משחק כיבוש שטח, עובד בלי אינטרנט, בלי פרסומות">
+<meta name="description" content="Emojiverse – משחק כיבוש שטח עם אימוג'י, עובד בלי אינטרנט, בלי פרסומות">
 <meta name="flypod" content="none">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; manifest-src 'self'; worker-src 'self'">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>כובש</title>
+<title>Emojiverse</title>
+<meta name="apple-mobile-web-app-title" content="Emojiverse">
+<meta name="application-name" content="Emojiverse">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -32,7 +34,7 @@
 <!-- תפריט ראשי -->
 <section id="menu" class="screen">
   <div class="card">
-    <h1>כובש</h1>
+    <h1 class="logo" dir="ltr">Emoji<span>verse</span></h1>
     <p class="sub">צאו מהשטח, סגרו לולאה – והשטח שלכם!</p>
     <div class="col">
     <label class="field">שם<input id="nameInput" maxlength="12" placeholder="השם שלך"></label>
@@ -86,7 +88,7 @@
 <!-- עזרה -->
 <section id="help" class="screen hidden">
   <div class="card">
-    <h2>איך משחקים</h2>
+    <h2>איך משחקים ב-<span dir="ltr">Emojiverse</span></h2>
     <ul class="help">
       <li>הדמות שלך זזה כל הזמן. מחוץ לשטח שלך היא משאירה שובל.</li>
       <li>חוזרים לשטח שלך – וכל מה שהשובל הקיף נכבש.</li>
@@ -174,7 +176,7 @@
 <!-- תוצאות סיבוב -->
 <section id="results" class="screen hidden">
   <div class="card small">
-    <h2>סוף הסיבוב 🏁</h2>
+    <h2>סוף הסיבוב ב-<span dir="ltr">Emojiverse</span> 🏁</h2>
     <ol id="rankList"></ol>
     <button id="againRoundBtn" class="primary">עוד סיבוב ↻</button>
     <button id="toLobbyBtn">ללובי</button>
