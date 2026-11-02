@@ -34,6 +34,7 @@
   <div class="card">
     <h1>כובש</h1>
     <p class="sub">צאו מהשטח, סגרו לולאה – והשטח שלכם!</p>
+    <div class="col">
     <label class="field">שם<input id="nameInput" maxlength="12" placeholder="השם שלך"></label>
     <div class="label">בחרו אימוג'י לדמות</div>
     <div id="avatarPick"></div>
@@ -41,6 +42,8 @@
     <div class="seg" id="diffSeg">
       <button data-v="easy">קל</button><button data-v="normal">רגיל</button><button data-v="hard">קשה</button>
     </div>
+    </div>
+    <div class="col">
     <button id="playBtn" class="primary">שחק ▶</button>
     <button id="onlineBtn" class="primary family">שחק משפחתי אונליין 👨‍👩‍👧‍👦</button>
     <div class="row">
@@ -49,6 +52,7 @@
       <button id="installBtn" class="hidden">📲 התקן</button>
     </div>
     <div id="best" class="best"></div>
+    </div>
   </div>
 </section>
 
@@ -56,6 +60,7 @@
 <section id="settings" class="screen hidden">
   <div class="card">
     <h2>הגדרות</h2>
+    <div class="col">
     <div class="label">מספר יריבים</div>
     <div class="seg" id="botsSeg"><button data-v="0">בלי בוטים</button><button data-v="5">5</button><button data-v="6">6</button><button data-v="7">7</button><button data-v="8">8</button></div>
     <div class="label">גודל מפה</div>
@@ -64,14 +69,17 @@
     <div class="seg" id="fpsSeg"><button data-v="30">30 (חסכוני)</button><button data-v="60">60 (חלק)</button></div>
     <div class="label">איכות תצוגה</div>
     <div class="seg" id="dprSeg"><button data-v="1">חסכונית</button><button data-v="2">חדה</button></div>
+    </div>
+    <div class="col">
     <div class="label">רגישות שליטה</div>
     <div class="seg" id="sensSeg"><button data-v="low">נמוכה</button><button data-v="medium">בינונית</button><button data-v="high">גבוהה</button></div>
     <div class="label">שיטת שליטה</div>
     <div class="seg" id="ctrlSeg"><button data-v="point">הצבעה</button><button data-v="drag">גרירה</button><button data-v="joy">ג'ויסטיק</button></div>
-    <label class="check"><input type="checkbox" id="miniChk"> מפה קטנה</label>
-    <label class="check"><input type="checkbox" id="vibChk"> רטט במוות</label>
+    <div class="checks"><label class="check"><input type="checkbox" id="miniChk"> מפה קטנה</label>
+    <label class="check"><input type="checkbox" id="vibChk"> רטט במוות</label></div>
     <button id="settingsBack" class="primary">שמור וחזור</button>
     <button id="resetBest" class="danger">איפוס שיאים</button>
+    </div>
   </div>
 </section>
 
@@ -83,7 +91,7 @@
       <li>הדמות שלך זזה כל הזמן. מחוץ לשטח שלך היא משאירה שובל.</li>
       <li>חוזרים לשטח שלך – וכל מה שהשובל הקיף נכבש.</li>
       <li>אם מישהו נוגע בשובל שלך – נפסלת. נגעת בשובל של יריב – הוא נפסל.</li>
-      <li>אסור לגעת בשובל של עצמך ובקצה המפה.</li>
+      <li>אסור לגעת בשובל של עצמך. למפה אין קצוות: יוצאים מצד אחד – ונכנסים מהצד השני.</li>
       <li>ראש בראש: מי שבתוך השטח שלו שורד; מחוץ לשטח – בעל השובל הארוך נפסל.</li>
       <li><b>טלפון:</b> נוגעים במסך בכיוון שאליו רוצים לנוע – הדמות (במרכז המסך) פונה אל האצבע. אפשר להחליק את האצבע כדי לנווט; כשמרימים, הכיוון נשמר. (גרירה או ג'ויסטיק – בהגדרות.)</li>
       <li><b>מקלדת:</b> חיצים לכיוון (גם באלכסון), A/D לסיבוב, ‏P/Esc להשהיה.</li>
@@ -134,6 +142,7 @@
 <section id="lobby" class="screen hidden">
   <div class="card">
     <h2>חדר <span id="roomCode" dir="ltr" class="code"></span></h2>
+    <div class="col">
     <div id="shareBox">
       <input id="shareLink" readonly dir="ltr" aria-label="קישור לחדר">
       <div class="row"><button id="shareBtn">📤 שיתוף</button><a id="waLink" class="btnlink" target="_blank" rel="noopener">וואטסאפ</a></div>
@@ -143,7 +152,9 @@
     <div id="lobbyAvatars" class="avgrid"></div>
     <div class="label">שחקנים בחדר <span id="lobbyCount"></span></div>
     <ul id="lobbyPlayers"></ul>
-    <div id="hostCfg">
+    </div>
+    <div class="col">
+    <div id="hostCfg" class="cfg">
       <div class="label">בוטים</div>
       <div class="seg" id="mpBotsSeg"><button data-v="0">בלי בוטים</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button><button data-v="6">6</button></div>
       <div class="label">רמת הבוטים</div>
@@ -156,6 +167,7 @@
     <p id="waitHost" class="sub">מחכים שהמארח יתחיל…</p>
     <p id="lobbyMsg" class="sub"></p>
     <button id="leaveBtn">יציאה מהחדר</button>
+    </div>
   </div>
 </section>
 

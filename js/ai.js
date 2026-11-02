@@ -14,8 +14,7 @@
   var OFFS = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.5, -1.5, 2.0, -2.0, 2.6, -2.6, 3.1];
 
   function dangerAt(g, p, x, y) {
-    var m = 0.8;
-    if (x < m || y < m || x > g.W - m || y > g.W - m) return true;
+    // v7: טורוס – אין קירות; רק השובל העצמי מסוכן (trailDist2 כבר עוטף)
     return g.trailDist2(p, x, y, g.SELF_SKIP, false) < 1.2 * 1.2;
   }
   function safeHeading(g, p, a, probe) {
@@ -28,8 +27,8 @@
     for (var k = 0; k < g.players.length; k++) {
       var q = g.players[k];
       if (!q.alive || q === p) continue;
-      var d = Math.hypot(q.x - p.x, q.y - p.y);
-      for (var i = 0; i < t.length; i += 8) { var dd = Math.hypot(q.x - t[i], q.y - t[i + 1]); if (dd < d) d = dd; }
+      var d = Math.sqrt(g.dist2(q.x, q.y, p.x, p.y));
+      for (var i = 0; i < t.length; i += 8) { var dd = Math.sqrt(g.dist2(q.x, q.y, t[i], t[i + 1])); if (dd < d) d = dd; }
       if (d < best) best = d;
     }
     return best;
@@ -52,7 +51,7 @@
         if (!q.alive || q === p || q.trail.length < 6 * K) continue;
         var tr = q.trail;
         for (var i = 0; i < tr.length; i += 4 * K) {
-          var d = Math.hypot(tr[i] - p.x, tr[i + 1] - p.y) - (q.isBot ? 0 : 2);
+          var d = Math.sqrt(g.dist2(tr[i], tr[i + 1], p.x, p.y)) - (q.isBot ? 0 : 2);
           if (d < bd) { bd = d; tx = tr[i]; ty = tr[i + 1]; }
         }
       }
@@ -62,7 +61,7 @@
     if (ai.mode === 'hunt') {
       ai.huntT++;
       if (ai.huntT > 90 || p.trail.length / 2 * g.SPEED * g.DT > L.maxLen / 2) ai.mode = out ? 'return' : 'home';
-      else want = Math.atan2(ai.goal.y - p.y, ai.goal.x - p.x);
+      else want = Math.atan2(g.wd(ai.goal.y - p.y), g.wd(ai.goal.x - p.x));
     }
 
     if (ai.mode === 'home') {
@@ -92,11 +91,11 @@
       if (!out) { ai.mode = 'home'; ai.homeT = 0; }
       else {
         if (!ai.goal || ai.goalT-- <= 0) { ai.goal = g.nearestOwn(p, 160) || { x: p.homeX, y: p.homeY }; ai.goalT = 5; }
-        want = Math.atan2(ai.goal.y - p.y, ai.goal.x - p.x);
+        want = Math.atan2(g.wd(ai.goal.y - p.y), g.wd(ai.goal.x - p.x));   // הדרך הקצרה הביתה על הטורוס
       }
     }
 
-    // בדיקת בטיחות: הכיוון הקרוב לרצוי שאינו מוביל לקיר או לשובל העצמי
+    // בדיקת בטיחות: הכיוון הקרוב לרצוי שאינו מוביל לשובל העצמי
     var chosen = want;
     for (var o = 0; o < OFFS.length; o++) {
       var a = want + OFFS[o];

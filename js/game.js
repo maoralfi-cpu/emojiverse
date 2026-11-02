@@ -1,6 +1,9 @@
 /* כובש – לוגיקת משחק בתנועה חופשית 360° (ללא DOM). נכתב מאפס.
-   עולם רציף בגודל W×W יחידות. השטח נשמר ברשת עדינה (CELL יחידות לתא) לצורך כיבוש;
-   השובל הוא קו שבור של נקודות, והתנגשויות נבדקות לפי מרחק נקודה-מקטע. */
+   v7: העולם הוא טורוס (W×W יחידות, בלי קצוות): מי שיוצא מימין נכנס משמאל, וכך גם למעלה/למטה.
+   - מיקומי שחקנים תמיד בתחום [0,W). השטח נשמר ברשת עדינה (CELL יחידות לתא) עם אינדקסים מודולו G.
+   - נקודות השובל נשמרות "פרושות" (רציפות, בלי קפיצה של W בתפר), כך שכל מקטע קצר.
+   - כל מרחק/הפרש מחושב לפי הדרך הקצרה ביותר על הטורוס (wd). מקטע של שובל מוזז לעותק
+     הקרוב ביותר לנקודה הנבדקת לפני בדיקת ההתנגשות. */
 (function (root) {
   'use strict';
   var TAU = Math.PI * 2;
@@ -35,6 +38,15 @@
   Game.TAU = TAU;
   var P = Game.prototype;
 
+  /* הפרש קצר ביותר על מעגל באורך W */
+  function wrapDelta(d, W) { d = d % W; if (d > W / 2) d -= W; else if (d < -W / 2) d += W; return d; }
+  function mod(a, n) { a = a % n; return a < 0 ? a + n : a; }
+  Game.wrapDelta = wrapDelta; Game.mod = mod;
+  P.wd = function (d) { return wrapDelta(d, this.W); };
+  P.wrap = function (v) { return mod(v, this.W); };
+  /* מרחק (בריבוע) על הטורוס */
+  P.dist2 = function (ax, ay, bx, by) { var dx = wrapDelta(bx - ax, this.W), dy = wrapDelta(by - ay, this.W); return dx * dx + dy * dy; };
+
   function angDiff(a, b) { var d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; }
   Game.angDiff = angDiff;
   function segDist2(px, py, ax, ay, bx, by) {
@@ -57,12 +69,11 @@
   Game.segSegDist2 = segSegDist2;
 
   P.cellAt = function (x, y) {
-    var cx = Math.floor(x / this.CELL), cy = Math.floor(y / this.CELL);
-    if (cx < 0 || cy < 0 || cx >= this.G || cy >= this.G) return -1;
-    return cy * this.G + cx;
+    var G = this.G;
+    return mod(Math.floor(y / this.CELL), G) * G + mod(Math.floor(x / this.CELL), G);
   };
-  P.ownerAt = function (x, y) { var c = this.cellAt(x, y); return c < 0 ? 0 : this.owner[c]; };
-  P.inBounds = function (x, y) { return x >= 0 && y >= 0 && x < this.W && y < this.W; };
+  P.ownerAt = function (x, y) { return this.owner[this.cellAt(x, y)]; };
+  P.inBounds = function () { return true; };   // אין קצוות
 
   P.setOwner = function (i, id) {
     var o = this.owner[i];
@@ -90,7 +101,7 @@
   P.findSpawn = function () {
     var W = this.W, R = this.SPAWN_R;
     for (var attempt = 0; attempt < 300; attempt++) {
-      var m = R + 4, x = m + this.rand() * (W - 2 * m), y = m + this.rand() * (W - 2 * m);
+      var x = this.rand() * W, y = this.rand() * W;      // בכל מקום – אין קצוות
       var rr = attempt < 150 ? R + 3 : R + 0.5;
       if (!this.areaFree(x, y, rr)) continue;
       if (this.nearAnything(x, y, R + 4)) continue;
@@ -100,21 +111,22 @@
   };
   P.areaFree = function (x, y, r) {
     var C = this.CELL, G = this.G;
-    var x0 = Math.max(0, Math.floor((x - r) / C)), x1 = Math.min(G - 1, Math.floor((x + r) / C));
-    var y0 = Math.max(0, Math.floor((y - r) / C)), y1 = Math.min(G - 1, Math.floor((y + r) / C));
+    var x0 = Math.floor((x - r) / C), x1 = Math.floor((x + r) / C), y0 = Math.floor((y - r) / C), y1 = Math.floor((y + r) / C);
     for (var cy = y0; cy <= y1; cy++) for (var cx = x0; cx <= x1; cx++) {
       var dx = (cx + 0.5) * C - x, dy = (cy + 0.5) * C - y;
-      if (dx * dx + dy * dy <= r * r && this.owner[cy * G + cx]) return false;
+      if (dx * dx + dy * dy <= r * r && this.owner[mod(cy, G) * G + mod(cx, G)]) return false;
     }
     return true;
   };
+  /* מרווח מינימלי מכל שחקן ושובל – לפי מרחק על הטורוס */
   P.nearAnything = function (x, y, d) {
+    var W = this.W;
     for (var k = 0; k < this.players.length; k++) {
       var q = this.players[k];
       if (!q.alive) continue;
-      if (Math.abs(q.x - x) < d && Math.abs(q.y - y) < d) return true;
+      if (Math.abs(wrapDelta(q.x - x, W)) < d && Math.abs(wrapDelta(q.y - y, W)) < d) return true;
       var t = q.trail;
-      for (var i = 0; i < t.length; i += 2) if (Math.abs(t[i] - x) < d && Math.abs(t[i + 1] - y) < d) return true;
+      for (var i = 0; i < t.length; i += 2) if (Math.abs(wrapDelta(t[i] - x, W)) < d && Math.abs(wrapDelta(t[i + 1] - y, W)) < d) return true;
     }
     return false;
   };
@@ -122,11 +134,10 @@
   /* מטביע עיגול של תאים כשטח של id */
   P.stamp = function (x, y, r, id) {
     var C = this.CELL, G = this.G;
-    var x0 = Math.max(0, Math.floor((x - r) / C)), x1 = Math.min(G - 1, Math.floor((x + r) / C));
-    var y0 = Math.max(0, Math.floor((y - r) / C)), y1 = Math.min(G - 1, Math.floor((y + r) / C));
+    var x0 = Math.floor((x - r) / C), x1 = Math.floor((x + r) / C), y0 = Math.floor((y - r) / C), y1 = Math.floor((y + r) / C);
     for (var cy = y0; cy <= y1; cy++) for (var cx = x0; cx <= x1; cx++) {
       var dx = (cx + 0.5) * C - x, dy = (cy + 0.5) * C - y;
-      if (dx * dx + dy * dy <= r * r) this.setOwner(cy * G + cx, id);
+      if (dx * dx + dy * dy <= r * r) this.setOwner(mod(cy, G) * G + mod(cx, G), id);
     }
   };
 
@@ -134,6 +145,7 @@
     at = at || this.findSpawn();
     if (!at) return false;
     this.stamp(at.x, at.y, this.SPAWN_R, p.id);
+    at = { x: mod(at.x, this.W), y: mod(at.y, this.W) };
     p.x = p.px = p.homeX = at.x; p.y = p.py = p.homeY = at.y;
     p.h = p.ph = p.target = this.rand() * TAU; p.turnInput = 0;
     p.trail = []; p.alive = true; p.ai = null;
@@ -155,37 +167,47 @@
 
   /* מרחק מינימלי (בריבוע) מנקודה לשובל של q. skip = כמה מקטעים אחרונים לדלג; live = לכלול את המקטע אל הראש */
   P.trailDist2 = function (q, x, y, skip, live) {
-    var t = q.trail, n = t.length / 2, best = Infinity;
+    var t = q.trail, n = t.length / 2, best = Infinity, W = this.W;
     if (!n) return best;
     var last = n - 1 - skip;
     for (var i = 0; i < last; i++) {
-      var d = segDist2(x, y, t[2 * i], t[2 * i + 1], t[2 * i + 2], t[2 * i + 3]);
+      var ax = t[2 * i], ay = t[2 * i + 1];
+      // הנקודה מועתקת לעותק הקרוב ביותר לתחילת המקטע
+      var d = segDist2(ax + wrapDelta(x - ax, W), ay + wrapDelta(y - ay, W), ax, ay, t[2 * i + 2], t[2 * i + 3]);
       if (d < best) best = d;
     }
     if (live && skip === 0) {
-      var d2 = segDist2(x, y, t[2 * n - 2], t[2 * n - 1], q.x, q.y);
+      var lx = t[2 * n - 2], ly = t[2 * n - 1];
+      var d2 = segDist2(lx + wrapDelta(x - lx, W), ly + wrapDelta(y - ly, W), lx, ly, lx + wrapDelta(q.x - lx, W), ly + wrapDelta(q.y - ly, W));
       if (d2 < best) best = d2;
     }
     return best;
   };
 
   /* מרחק מינימלי (בריבוע) ממקטע התנועה a→b לשובל של q */
+  /* a→b = מקטע התנועה (b כבר "פרוש" ביחס ל-a). לכל מקטע שובל מזיזים את a→b לעותק הקרוב אליו */
   P.trailSegDist2 = function (q, ax, ay, bx, by, skip, live) {
-    var t = q.trail, n = t.length / 2, best = Infinity;
+    var t = q.trail, n = t.length / 2, best = Infinity, W = this.W;
     if (!n) return best;
     var last = n - 1 - skip;
     for (var i = 0; i < last; i++) {
-      var d = segSegDist2(ax, ay, bx, by, t[2 * i], t[2 * i + 1], t[2 * i + 2], t[2 * i + 3]);
+      var cx = t[2 * i], cy = t[2 * i + 1];
+      var sx = cx + wrapDelta(ax - cx, W) - ax, sy = cy + wrapDelta(ay - cy, W) - ay;
+      var d = segSegDist2(ax + sx, ay + sy, bx + sx, by + sy, cx, cy, t[2 * i + 2], t[2 * i + 3]);
       if (d < best) { best = d; if (!d) return 0; }
     }
     if (live && skip === 0) {
-      var d2 = segSegDist2(ax, ay, bx, by, t[2 * n - 2], t[2 * n - 1], q.x, q.y);
+      var lx = t[2 * n - 2], ly = t[2 * n - 1];
+      var ox = lx + wrapDelta(ax - lx, W) - ax, oy = ly + wrapDelta(ay - ly, W) - ay;
+      var d2 = segSegDist2(ax + ox, ay + oy, bx + ox, by + oy, lx, ly, lx + wrapDelta(q.x - lx, W), ly + wrapDelta(q.y - ly, W));
       if (d2 < best) best = d2;
     }
     return best;
   };
 
-  /* כיבוש: השובל מוטבע כשטח, ואז מילוי מבחוץ – מה שלא נגיש מבחוץ נכבש */
+  /* כיבוש על טורוס: אין "בחוץ". השובל מוטבע כשטח; אחר כך מחלקים את כל התאים שאינם של השחקן
+     לרכיבי קשירות (4 שכנים, עם עטיפה). הרכיב הגדול ביותר נשאר; כל השאר – נכבשים.
+     לולאה שמקיפה את הטורוס (לא כוויצה) לא מפרידה כלום => רכיב אחד => נכבש רק השובל עצמו. */
   P.capture = function (p) {
     var id = p.id, t = p.trail, C = this.CELL, G = this.G, k;
     var step = C * 0.5;
@@ -195,35 +217,16 @@
       for (var s = 0; s <= m; s++) this.stamp(ax + (bx - ax) * s / m, ay + (by - ay) * s / m, this.STAMP_R, id);
     }
     p.trail = [];
-    var owner = this.owner, minX = G, minY = G, maxX = -1, maxY = -1;
-    for (var y = 0; y < G; y++) {
-      var row = y * G;
-      for (var x = 0; x < G; x++) if (owner[row + x] === id) {
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
-      }
-    }
-    if (maxX < 0) return 0;
-    // שוליים של תא אחד; תא בשולי התיבה שאינו של השחקן נחשב "בחוץ"
-    minX = Math.max(0, minX - 1); minY = Math.max(0, minY - 1);
-    maxX = Math.min(G - 1, maxX + 1); maxY = Math.min(G - 1, maxY + 1);
-    var gen = ++this._gen, mark = this._mark, q = this._queue, qh = 0, qt = 0;
-    function push(x, y) { var i = y * G + x; if (mark[i] === gen || owner[i] === id) return; mark[i] = gen; q[qt++] = i; }
-    for (var xx = minX; xx <= maxX; xx++) { push(xx, minY); push(xx, maxY); }
-    for (var yy = minY; yy <= maxY; yy++) { push(minX, yy); push(maxX, yy); }
-    while (qh < qt) {
-      var i = q[qh++], cx = i % G, cy = (i - cx) / G;
-      if (cx > minX) push(cx - 1, cy); if (cx < maxX) push(cx + 1, cy);
-      if (cy > minY) push(cx, cy - 1); if (cy < maxY) push(cx, cy + 1);
-    }
-    var gained = 0, victims = [];
-    for (var y2 = minY; y2 <= maxY; y2++) for (var x2 = minX; x2 <= maxX; x2++) {
-      var j = y2 * G + x2;
-      if (owner[j] !== id && mark[j] !== gen) {
-        var prev = owner[j];
-        this.setOwner(j, id); gained++;
-        if (prev && victims.indexOf(prev) < 0) victims.push(prev);
-      }
+    var comps = this.components(id);
+    if (comps.count <= 1) { this.events.push({ type: 'capture', player: p, cells: 0 }); return 0; }
+    var big = 0; for (k = 1; k < comps.count; k++) if (comps.size[k] > comps.size[big]) big = k;
+    var owner = this.owner, mark = this._mark, base = comps.base, n = owner.length, gained = 0, victims = [];
+    for (var j = 0; j < n; j++) {
+      var c = mark[j] - base;
+      if (c < 0 || c === big || owner[j] === id) continue;
+      var prev = owner[j];
+      this.setOwner(j, id); gained++;
+      if (prev && victims.indexOf(prev) < 0) victims.push(prev);
     }
     for (k = 0; k < victims.length; k++) {
       var vp = this.players[victims[k] - 1];
@@ -231,6 +234,26 @@
     }
     this.events.push({ type: 'capture', player: p, cells: gained });
     return gained;
+  };
+  /* רכיבי קשירות של התאים שאינם של id (4 שכנים, עוטף). mark[i] = base + מס' רכיב */
+  P.components = function (id) {
+    var G = this.G, owner = this.owner, n = owner.length, mark = this._mark, q = this._queue;
+    var base = this._gen + 1, count = 0, size = [];
+    for (var s0 = 0; s0 < n; s0++) {
+      if (owner[s0] === id || mark[s0] >= base) continue;
+      var cid = base + count, qh = 0, qt = 0, sz = 0;
+      mark[s0] = cid; q[qt++] = s0;
+      while (qh < qt) {
+        var i = q[qh++], x = i % G, y = (i - x) / G, nb; sz++;
+        nb = y * G + (x ? x - 1 : G - 1); if (owner[nb] !== id && mark[nb] < base) { mark[nb] = cid; q[qt++] = nb; }
+        nb = y * G + (x < G - 1 ? x + 1 : 0); if (owner[nb] !== id && mark[nb] < base) { mark[nb] = cid; q[qt++] = nb; }
+        nb = (y ? y - 1 : G - 1) * G + x; if (owner[nb] !== id && mark[nb] < base) { mark[nb] = cid; q[qt++] = nb; }
+        nb = (y < G - 1 ? y + 1 : 0) * G + x; if (owner[nb] !== id && mark[nb] < base) { mark[nb] = cid; q[qt++] = nb; }
+      }
+      size.push(sz); count++;
+    }
+    this._gen = base + count;
+    return { count: count, size: size, base: base };
   };
 
   /* צעד לוגיקה אחד */
@@ -248,18 +271,17 @@
       p.h += d;
       if (p.h > Math.PI) p.h -= TAU; else if (p.h < -Math.PI) p.h += TAU;
       p.x += Math.cos(p.h) * v; p.y += Math.sin(p.h) * v;
+      p.ux = p.px + Math.cos(p.h) * v; p.uy = p.py + Math.sin(p.h) * v;   // סוף מקטע התנועה, לא עטוף
+      p.x = mod(p.x, this.W); p.y = mod(p.y, this.W);                       // עטיפה: אין קיר
       p.dead = null;
       moving.push(p);
     }
-    // קיר
-    for (k = 0; k < moving.length; k++) { p = moving[k]; if (!this.inBounds(p.x, p.y)) p.dead = { killer: null, reason: 'wall' }; }
     // ראש בראש
     var H2 = this.HEADON * this.HEADON;
     for (var a = 0; a < moving.length; a++) for (var b = a + 1; b < moving.length; b++) {
       var A = moving[a], B = moving[b];
       if (A.dead || B.dead) continue;
-      var dx = A.x - B.x, dy = A.y - B.y;
-      if (dx * dx + dy * dy > H2) continue;
+      if (this.dist2(A.x, A.y, B.x, B.y) > H2) continue;
       var aHome = this.ownerAt(A.x, A.y) === A.id, bHome = this.ownerAt(B.x, B.y) === B.id;
       if (aHome && bHome) continue;
       if (aHome) B.dead = { killer: A, reason: 'head' };
@@ -276,12 +298,10 @@
       for (var j = 0; j < ps.length; j++) {
         var q = ps[j];
         if (!q.alive || !q.trail.length) continue;
-        var tb = q.tb, ext = this.HIT + 0.5;
-        var bx0 = Math.min(tb[0], q.x), by0 = Math.min(tb[1], q.y), bx1 = Math.max(tb[2], q.x), by1 = Math.max(tb[3], q.y);
-        if (Math.max(p.x, p.px) < bx0 - ext || Math.min(p.x, p.px) > bx1 + ext || Math.max(p.y, p.py) < by0 - ext || Math.min(p.y, p.py) > by1 + ext) continue;
+        if (!this.boxNear(q, p, this.HIT + 0.5)) continue;
         if (q === p) {
-          if (this.trailSegDist2(p, p.px, p.py, p.x, p.y, this.SELF_SKIP, false) < hit2) { p.dead = { killer: null, reason: 'self' }; break; }
-        } else if (this.trailSegDist2(q, p.px, p.py, p.x, p.y, 0, true) < hit2) trailKills.push([q, p]);
+          if (this.trailSegDist2(p, p.px, p.py, p.ux, p.uy, this.SELF_SKIP, false) < hit2) { p.dead = { killer: null, reason: 'self' }; break; }
+        } else if (this.trailSegDist2(q, p.px, p.py, p.ux, p.uy, 0, true) < hit2) trailKills.push([q, p]);
       }
     }
     for (k = 0; k < moving.length; k++) { p = moving[k]; if (p.dead) this.kill(p, p.dead.killer, p.dead.reason); }
@@ -292,14 +312,27 @@
       if (!p.alive) continue;
       var home = this.ownerAt(p.x, p.y) === p.id;
       if (home) {
-        if (p.trail.length) { p.trail.push(p.x, p.y); this.capture(p); }
+        if (p.trail.length) { var tl0 = p.trail.length; p.trail.push(p.trail[tl0 - 2] + this.wd(p.x - p.trail[tl0 - 2]), p.trail[tl0 - 1] + this.wd(p.y - p.trail[tl0 - 1])); this.capture(p); }
       } else {
         if (!p.trail.length) { p.trail.push(p.px, p.py); p.tb = [p.px, p.py, p.px, p.py]; }
-        p.trail.push(p.x, p.y);
-        var t = p.tb; if (p.x < t[0]) t[0] = p.x; if (p.y < t[1]) t[1] = p.y; if (p.x > t[2]) t[2] = p.x; if (p.y > t[3]) t[3] = p.y;
+        // נקודה חדשה "פרושה" ביחס לקודמת – השובל רציף גם כשחוצים את התפר
+        var tl = p.trail.length, nx = p.trail[tl - 2] + this.wd(p.x - p.trail[tl - 2]), ny = p.trail[tl - 1] + this.wd(p.y - p.trail[tl - 1]);
+        p.trail.push(nx, ny);
+        var t = p.tb; if (nx < t[0]) t[0] = nx; if (ny < t[1]) t[1] = ny; if (nx > t[2]) t[2] = nx; if (ny > t[3]) t[3] = ny;
       }
     }
     for (k = 0; k < ps.length; k++) { p = ps[k]; if (p.alive) { var pc = this.pct(p); if (pc > p.bestPct) p.bestPct = pc; } }
+  };
+
+  /* סינון מהיר: האם מקטע התנועה של p קרוב לתיבה התוחמת של השובל של q (עם עטיפה) */
+  P.boxNear = function (q, p, ext) {
+    var tb = q.tb, W = this.W;
+    var x0 = Math.min(tb[0], tb[0] + this.wd(q.x - tb[0])), x1 = Math.max(tb[2], tb[0] + this.wd(q.x - tb[0]));
+    var y0 = Math.min(tb[1], tb[1] + this.wd(q.y - tb[1])), y1 = Math.max(tb[3], tb[1] + this.wd(q.y - tb[1]));
+    if (x1 - x0 + 2 * ext >= W / 2 || y1 - y0 + 2 * ext >= W / 2) return true;   // שובל ארוך – בודקים הכול
+    var cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    var ax = cx + this.wd(p.px - cx), ay = cy + this.wd(p.py - cy), bx = ax + (p.ux - p.px), by = ay + (p.uy - p.py);
+    return !(Math.max(ax, bx) < x0 - ext || Math.min(ax, bx) > x1 + ext || Math.max(ay, by) < y0 - ext || Math.min(ay, by) > y1 + ext);
   };
 
   P.pct = function (p) { return 100 * this.counts[p.id] / (this.G * this.G); };
@@ -307,18 +340,20 @@
   /* חיפוש התא הקרוב ביותר בשטח של השחקן (טבעות מתרחבות). מחזיר נקודה בעולם או null */
   P.nearestOwn = function (p, maxR) {
     var G = this.G, C = this.CELL, cx = Math.floor(p.x / C), cy = Math.floor(p.y / C), o = this.owner, id = p.id;
-    maxR = maxR || G;
+    maxR = Math.min(maxR || G, G >> 1);
+    var best = null;
     for (var r = 1; r <= maxR; r++) {
-      var best = -1, bd = Infinity;
+      var bd = Infinity; best = null;
       for (var i = -r; i <= r; i++) {
         var pts = [[cx + i, cy - r], [cx + i, cy + r], [cx - r, cy + i], [cx + r, cy + i]];
         for (var k = 0; k < 4; k++) {
           var x = pts[k][0], y = pts[k][1];
-          if (x < 0 || y < 0 || x >= G || y >= G) continue;
-          if (o[y * G + x] === id) { var d = i * i; if (d < bd) { bd = d; best = y * G + x; } }
+          var wx = mod(x, G), wy = mod(y, G);
+          if (o[wy * G + wx] === id) { var d = i * i; if (d < bd) { bd = d; best = [x, y]; } }
         }
       }
-      if (best >= 0) { var bx = best % G; return { x: (bx + 0.5) * C, y: ((best - bx) / G + 0.5) * C }; }
+      // נקודה "פרושה" ליד השחקן (עלולה להיות מחוץ ל-[0,W) – משתמשים בהפרש עטוף)
+      if (best) return { x: (best[0] + 0.5) * C, y: (best[1] + 0.5) * C };
     }
     return null;
   };

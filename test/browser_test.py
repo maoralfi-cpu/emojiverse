@@ -54,7 +54,7 @@ try:
         results['drag_ok'] = abs(ang - 0.785) < 0.1 and abs(ang2 - 2.356) < 0.15 and abs(abs(ang3) - math.pi) < 0.1
         # מחזירים את השחקן הביתה (בעזרת היגוי לנקודת הבית) ומחכים שהבוטים יכבשו
         pg.evaluate("""() => new Promise(r => { const me = window.__kovesh.me; let n = 0;
-            const t = setInterval(() => { me.target = Math.atan2(me.homeY - me.y, me.homeX - me.x); if (!me.trail.length || ++n > 120) { clearInterval(t); r(); } }, 50); })""")
+            const t = setInterval(() => { const g = window.__kovesh.game; me.target = Math.atan2(g.wd(me.homeY - me.y), g.wd(me.homeX - me.x)); if (!me.trail.length || ++n > 120) { clearInterval(t); r(); } }, 50); })""")
         pg.evaluate("""() => new Promise(r => { const me = window.__kovesh.me; let n = 0;
             const t = setInterval(() => { me.target = me.h + 0.08; if (++n > 140) { clearInterval(t); r(); } }, 50); })""")
         st = pg.evaluate('''() => { const k = window.__kovesh, g = k.game, me = k.me;
@@ -85,9 +85,9 @@ try:
         pg.wait_for_timeout(500)
         results['sw'] = pg.evaluate('navigator.serviceWorker ? navigator.serviceWorker.getRegistration().then(r => !!(r && (r.active||r.installing||r.waiting))) : false')
         results['external_requests'] = sorted(set(u for u in reqs if not u.startswith(url) and not u.startswith('data:') and not u.startswith('blob:') and 'cloudflareinsights' not in u))
-        # מסך סוף: מתאבדים בקיר
+        # מסך סוף: פסילה מלאכותית (אין קירות בטורוס)
         if pg.evaluate('window.__kovesh.state') == 'play':
-            pg.evaluate('''() => { const g = window.__kovesh.game, me = window.__kovesh.me; g.kill(me, null, 'wall'); }''')
+            pg.evaluate('''() => { const g = window.__kovesh.game, me = window.__kovesh.me; g.kill(me, null, 'self'); }''')
             pg.wait_for_timeout(300)
         pg.wait_for_timeout(1500)
         results['over_visible'] = pg.is_visible('#over')

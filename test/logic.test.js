@@ -159,12 +159,54 @@ console.log('אין "מנהור" דרך שובל');
   ok(c2 === t2, `חציה בזוויות שונות במהירות הרגילה נתפסה ${c2}/${t2}`);
 }
 
-console.log('קיר');
+console.log('טורוס: אין קיר, עטיפה');
 {
   const g = new Game({ size: 40, rand: seeded(7) });
   const p = g.addPlayer({}); g.spawn(p, { x: 6, y: 20 });
-  go(g, p, L, 10);
-  ok(!p.alive, 'נפסל ביציאה מהמפה');
+  let maxJump = 0, px = p.x, minX = 99;
+  const n = Math.round(12 / (g.SPEED * g.DT));
+  for (let i = 0; i < n; i++) { p.h = p.target = L; g.step(); maxJump = Math.max(maxJump, Math.abs(Game.wrapDelta(p.x - px, 40))); px = p.x; minX = Math.min(minX, p.x); }
+  ok(p.alive && p.x > 30 && p.x < 40, 'יצא משמאל ונכנס מימין, חי (x=' + p.x.toFixed(2) + ')');
+  ok(maxJump < g.SPEED * g.DT + 1e-6, 'התנועה רציפה (קפיצה עטופה מקס ' + maxJump.toFixed(3) + ')');
+  const t = p.trail; let seg = 0; for (let k = 0; k + 3 < t.length; k += 2) seg = Math.max(seg, Math.hypot(t[k+2]-t[k], t[k+3]-t[k+1]));
+  ok(seg < 1, 'השובל נשמר רציף – אין מקטע שחוצה את כל המפה (' + seg.toFixed(3) + ')');
+  ok(Game.wrapDelta(39, 40) === -1 && Game.wrapDelta(-39, 40) === 1 && g.dist2(0.5, 0.5, 39.5, 39.5) === 2, 'wrapDelta / dist2');
+  ok(g.ownerAt(-0.1, 20.2) === g.ownerAt(39.9, 20.2) && g.cellAt(40.2, 0) === g.cellAt(0.2, 0), 'אינדקסים עוטפים');
+}
+
+console.log('טורוס: כיבוש');
+{ // לולאה רגילה
+  const g = new Game({ size: 60, rand: seeded(21) });
+  const p = g.addPlayer({}); g.spawn(p, { x: 30, y: 30 });
+  go(g, p, R, 10); go(g, p, D, 10); go(g, p, L, 12); go(g, p, U, 8);
+  ok(p.alive && !p.trail.length && own(g, p, 36, 35) && !own(g, p, 45, 35) && !own(g, p, 10, 10), 'לולאה רגילה: פנים נכבש, השאר לא');
+}
+{ // לולאה שחוצה את התפר האנכי (x=0)
+  const g = new Game({ size: 60, rand: seeded(22) });
+  const p = g.addPlayer({}); g.spawn(p, { x: 2, y: 30 });
+  go(g, p, L, 10); go(g, p, D, 10); go(g, p, R, 12); go(g, p, U, 8);
+  ok(p.alive && !p.trail.length, 'לולאה דרך התפר נסגרה');
+  ok(own(g, p, 55, 35) && own(g, p, 1, 36) && !own(g, p, 45, 35) && !own(g, p, 30, 30), 'פנים משני צדי התפר נכבש, השאר לא');
+}
+{ // מתחם קטן שנוגע בתפר בשני הצירים (סביב הפינה 0,0)
+  const g = new Game({ size: 60, rand: seeded(23) });
+  const p = g.addPlayer({}); g.spawn(p, { x: 0.5, y: 0.5 });
+  go(g, p, R, 7); go(g, p, D, 7); go(g, p, L, 14); go(g, p, U, 14); go(g, p, R, 14); go(g, p, D, 4); go(g, p, L, 6);
+  ok(p.alive && !p.trail.length, 'מתחם סביב הפינה נסגר');
+  ok(own(g, p, 5, 5) && own(g, p, 55, 55) && own(g, p, 5, 55) && own(g, p, 55, 5), 'ארבעת הרבעים סביב הפינה נכבשו');
+  ok(!own(g, p, 30, 30) && g.counts[p.id] * 0.25 < 300, 'שאר המפה לא נכבשה (' + (g.counts[p.id] * 0.25).toFixed(0) + ')');
+}
+{ // לולאה שמקיפה את כל הטורוס (לא כוויצה) – נכבש רק השובל
+  const g = new Game({ size: 40, rand: seeded(24) });
+  const p = g.addPlayer({}); g.spawn(p, { x: 20, y: 20 });
+  const before = g.counts[p.id];
+  go(g, p, R, 40);
+  ok(p.alive && !p.trail.length, 'סיבוב שלם סביב הטורוס חזר הביתה');
+  const gained = (g.counts[p.id] - before) * 0.25;
+  ok(own(g, p, 2, 20) && !own(g, p, 2, 10) && !own(g, p, 2, 30) && gained < 60, 'רק רצועת השובל נכבשה (' + gained.toFixed(0) + ' יח"ר)');
+  // סגירה שנייה של רצועה מקבילה: עכשיו יש שתי רצועות => פיצול => הרצועה הקטנה ביניהן נכבשת
+  go(g, p, U, 6); go(g, p, R, 38); go(g, p, D, 6);
+  ok(p.alive && own(g, p, 5, 16) && own(g, p, 33, 17) && !own(g, p, 5, 30) && !own(g, p, 20, 5), 'שתי רצועות: הרצועה הקטנה ביניהן נכבשה, הגדולה לא');
 }
 
 console.log('ראש בראש');
@@ -184,14 +226,19 @@ console.log('ראש בראש');
   ok(c.alive && !d.alive && c.kills === 1, 'מי שבתוך השטח שלו שורד');
 }
 
-// מימוש ייחוס: מילוי נאיבי מכל גבול המפה
+// מימוש ייחוס נאיבי לכלל הטורוס: רכיבי קשירות (4 שכנים, עוטף) של התאים הזרים; הגדול נשאר
 function reference(owner, G, id) {
-  const seen = new Uint8Array(G * G), st = [];
-  const add = k => { if (!seen[k] && owner[k] !== id) { seen[k] = 1; st.push(k); } };
-  for (let i = 0; i < G; i++) { add(i); add((G - 1) * G + i); add(i * G); add(i * G + G - 1); }
-  while (st.length) { const c = st.pop(), x = c % G, y = (c - x) / G;
-    if (x > 0) add(c - 1); if (x < G - 1) add(c + 1); if (y > 0) add(c - G); if (y < G - 1) add(c + G); }
-  const out = new Uint8Array(G * G); for (let k = 0; k < G * G; k++) out[k] = owner[k] === id || !seen[k] ? 1 : 0; return out;
+  const comp = new Int32Array(G * G).fill(-1), sizes = [];
+  for (let s0 = 0; s0 < G * G; s0++) {
+    if (owner[s0] === id || comp[s0] >= 0) continue;
+    const c = sizes.length, st = [s0]; comp[s0] = c; let n = 0;
+    while (st.length) { const k = st.pop(), x = k % G, y = (k - x) / G; n++;
+      for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+        const j = ((ny + G) % G) * G + (nx + G) % G; if (owner[j] !== id && comp[j] < 0) { comp[j] = c; st.push(j); } } }
+    sizes.push(n);
+  }
+  let big = 0; for (let c = 1; c < sizes.length; c++) if (sizes[c] > sizes[big]) big = c;
+  const out = new Uint8Array(G * G); for (let k = 0; k < G * G; k++) out[k] = owner[k] === id || (sizes.length > 1 && comp[k] !== big) ? 1 : 0; return out;
 }
 console.log('השוואה למימוש ייחוס – 400 מסלולים אקראיים');
 {
@@ -210,7 +257,8 @@ console.log('השוואה למימוש ייחוס – 400 מסלולים אקר�
         // ייחוס: מטביעים את אותו שובל על עותק ואז מילוי נאיבי
         const h = new Game({ size: 40 }); h.owner.set(snapOwner); h.counts[p.id] = before;
         h.players.push(p);
-        const tr = snapTrail.concat([p.x, p.y]);
+        const lx = snapTrail[snapTrail.length - 2], ly = snapTrail[snapTrail.length - 1];
+        const tr = snapTrail.concat([lx + Game.wrapDelta(p.x - lx, 40), ly + Game.wrapDelta(p.y - ly, 40)]);
         for (let k = 0; k + 3 < tr.length; k += 2) { const ax = tr[k], ay = tr[k+1], bx = tr[k+2], by = tr[k+3];
           const m = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / (h.CELL * 0.5)));
           for (let s = 0; s <= m; s++) h.stamp(ax + (bx - ax) * s / m, ay + (by - ay) * s / m, h.STAMP_R, p.id); }

@@ -392,12 +392,13 @@
       var x, y, h;
       if (b && b !== a && rt >= a.t) {
         var f = (rt - a.t) / (b.t - a.t);
-        x = a.x + (b.x - a.x) * f; y = a.y + (b.y - a.y) * f; h = a.h + Game.angDiff(b.h, a.h) * f;
+        // טורוס: אינטרפולציה לאורך ההפרש העטוף הקצר (בלי "טיסה" לאורך כל המפה בחציית תפר)
+        x = Net.lerpWrap(a.x, b.x, f, g.W); y = Net.lerpWrap(a.y, b.y, f, g.W); h = a.h + Game.angDiff(b.h, a.h) * f;
       } else if (!b) {   // תמונה מאחרת: ממשיכים קדימה לפי הכיוון, לכל היותר 120ms
         var e = Math.min(120, rt - a.t) / 1000;
         x = a.x + Math.cos(a.h) * g.SPEED * e; y = a.y + Math.sin(a.h) * g.SPEED * e; h = a.h;
       } else { x = a.x; y = a.y; h = a.h; }
-      p.x = x; p.y = y; p.h = h;
+      p.x = g.wrap(x); p.y = g.wrap(y); p.h = h;
       if (p !== Core.me) p.target = h;
       else p.target = h;            // התצוגה לא מקדימה את המארח (בלי קפיצות)
     }

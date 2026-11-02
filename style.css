@@ -80,3 +80,68 @@ button:active{transform:scale(.97)}
 #avatarPick button.emo.taken,.avgrid button.emo.taken{opacity:.3;filter:grayscale(1)}
 .emo-s{font-size:16px;width:22px;text-align:center;display:inline-block}
 #lobbyPlayers .emo-s,#rankList .emo-s{font-size:24px;width:32px}
+
+/* v7: מסכים שתמיד נכנסים בגובה המסך – בלי גלילה. יחידות dvh/svh, flex ו-clamp() */
+.screen{height:100vh;height:100dvh;padding:clamp(4px,1.6dvh,16px) clamp(6px,3vw,16px);overflow:hidden;align-items:center}
+.card{display:flex;flex-direction:column;gap:clamp(2px,.9dvh,9px);max-height:100%;overflow:hidden;padding:clamp(8px,2dvh,20px) clamp(10px,4vw,18px);border-radius:clamp(14px,3dvh,22px)}
+.card>*{flex:0 0 auto;margin-top:0;margin-bottom:0}
+.card h1{font-size:clamp(26px,7dvh,48px);line-height:1.05}
+.card h2{font-size:clamp(18px,3.6dvh,24px);margin:0}
+.card .sub{margin:0;font-size:clamp(12px,2.1dvh,16px)}
+.card .label{margin:clamp(0px,.6dvh,6px) 0 0;font-size:clamp(12px,2.1dvh,16px)}
+.card .field{font-size:clamp(13px,2.2dvh,16px)}
+.card .field input{font-size:clamp(14px,2.5dvh,17px);padding:clamp(5px,1.2dvh,10px) 12px}
+.card button{font-size:clamp(13px,2.3dvh,16px);padding:clamp(5px,1.3dvh,11px) 12px}
+.card .primary{margin:clamp(2px,.8dvh,10px) 0 0;font-size:clamp(15px,2.9dvh,21px);padding:clamp(7px,1.8dvh,14px)}
+.card .primary.family{font-size:clamp(14px,2.6dvh,18px)}
+.card .seg button{padding:clamp(4px,1.1dvh,9px) 2px;margin:0}
+.card .row button,.card .row .btnlink{margin:2px 4px;padding:clamp(5px,1.2dvh,10px) 12px}
+.card .check{margin:0}
+.card .best{margin:0;font-size:clamp(12px,2dvh,15px)}
+.card .danger{margin:0}
+.col{display:flex;flex-direction:column;gap:inherit;min-height:0}
+#shareBox{display:flex;flex-direction:column;gap:clamp(2px,.6dvh,6px)}
+.checks{display:flex;gap:18px;justify-content:center;flex-wrap:wrap}
+/* בוחר אימוג'י: פס אופקי אחד שגולל הצידה – לא תופס גובה */
+#avatarPick,.avgrid{display:grid;grid-auto-flow:column;grid-template-columns:none;grid-template-rows:1fr;grid-auto-columns:clamp(38px,6.6dvh,50px);gap:6px;max-height:none;overflow-x:auto;overflow-y:hidden;padding:2px 2px 6px;scroll-snap-type:x proximity;overscroll-behavior:contain;touch-action:pan-x}
+#avatarPick button.emo,.avgrid button.emo{font-size:clamp(20px,4.2dvh,28px);padding:clamp(2px,.7dvh,6px) 0;scroll-snap-align:start}
+#avatarPick button.emo.rnd,.avgrid button.emo.rnd{grid-column:auto;width:clamp(64px,11dvh,84px);font-size:clamp(12px,2dvh,15px);white-space:normal;line-height:1.1}
+/* רשימות שעלולות לגדול: מתכווצות ולא מגדילות את המסך */
+#lobbyPlayers,#rankList{flex:0 1 auto;min-height:0;overflow-y:auto}
+#lobbyPlayers li,#rankList li{padding:clamp(1px,.5dvh,5px) 8px;margin:2px 0;font-size:clamp(13px,2.2dvh,16px)}
+#lobbyPlayers .emo-s,#rankList .emo-s{font-size:clamp(18px,3.4dvh,24px)}
+.help{flex:0 1 auto;min-height:0;overflow-y:auto;margin:0;line-height:1.45;font-size:clamp(12px,2.1dvh,16px)}
+.bigav{width:clamp(56px,14dvh,110px);height:clamp(56px,14dvh,110px);align-self:center}
+.results{margin:0}.results b{font-size:clamp(18px,3.6dvh,26px)}
+#shareLink{padding:clamp(4px,1dvh,8px)}
+.cfg{display:grid;grid-template-columns:auto 1fr;gap:clamp(3px,.8dvh,8px) 10px;align-items:center;text-align:start}
+.cfg .label{margin:0}
+/* לרוחב (גובה נמוך): הכרטיס מתפרש לשתי עמודות */
+@media (orientation:landscape) and (max-height:560px){
+  .card:not(.small):has(>.col){display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr;column-gap:18px;max-width:min(860px,100%);align-content:start}
+  .card:not(.small)>h1,.card:not(.small)>h2,.card:not(.small)>.sub{grid-column:1/-1}
+  .card>.col{grid-row:auto/span 1;min-height:0;justify-content:center}
+  .card h1{font-size:clamp(24px,9dvh,40px)}
+  .card.small{max-width:min(520px,100%)}
+}
+.col{flex:0 1 auto}
+.card .field{white-space:nowrap}
+#avatarPick button.emo.rnd,.avgrid button.emo.rnd{width:auto;min-width:clamp(70px,12dvh,90px);padding-inline:6px;white-space:nowrap}
+#shareBox{flex-direction:row;align-items:center;gap:6px}
+#shareBox #shareLink{flex:1;min-width:0}
+#shareBox .row{flex-wrap:nowrap}
+/* רשימת השחקנים בלובי: "צ'יפים" קומפקטיים במקום שורות */
+#lobbyPlayers{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-start}
+#lobbyPlayers li{margin:0;padding:2px 10px 2px 6px;border-radius:999px;font-size:clamp(12px,2dvh,15px);white-space:nowrap}
+#lobbyPlayers .emo-s{font-size:clamp(16px,2.8dvh,20px);width:auto}
+.card .seg button{font-size:clamp(12px,2.1dvh,16px);line-height:1.15}
+.card p:empty{display:none}
+@media (max-height:700px){.card{gap:3px}.card .label{margin:2px 0 0}.card .seg button{padding:5px 2px}.card .primary{padding:8px}}
+#avatarPick,.avgrid{display:flex;flex-wrap:nowrap;gap:6px}
+#avatarPick button.emo,.avgrid button.emo{flex:0 0 clamp(38px,6.6dvh,50px)}
+#avatarPick button.emo.rnd,.avgrid button.emo.rnd{flex:0 0 auto}
+@media (orientation:landscape) and (max-height:560px){
+  .card:not(.small):has(>.col){grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .col{min-width:0}
+}
+.card .field input{min-width:0;width:100%}.card .field{min-width:0}#shareBox .row button,#shareBox .row .btnlink{white-space:nowrap}

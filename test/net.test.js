@@ -10,7 +10,7 @@ function same(g, m) {
   g.players.forEach((p, k) => { const q = m.players[k];
     if (!p.alive) return;
     if (p.trail.length !== q.trail.length) trails++;
-    else for (let i = 0; i < p.trail.length; i++) if (Math.abs(p.trail[i] - q.trail[i]) > 0.006) { trails++; break; }
+    else for (let i = 0; i < p.trail.length; i++) if (Math.abs(Game.wrapDelta(p.trail[i] - q.trail[i], g.W)) > 0.006) { trails++; break; }
   });
   let counts = 0; for (let id = 1; id <= g.players.length; id++) if (g.counts[id] !== m.counts[id]) counts++;
   return { cells, trails, counts };
@@ -53,6 +53,26 @@ console.log('קידוד/פענוח תמונת מצב');
   const b = Net.encodeSnap(g, tr, 0, false); Net.decodeSnap(b, m); Net.decodeSnap(b, m2);
   d = same(g, m2); const d1 = same(g, m);
   ok(!d.cells && !d.trails && !d1.cells && !d1.trails, 'אחרי הצטרפות – שני הלקוחות נשארים מסונכרנים');
+}
+
+console.log('טורוס: חציית תפר ברשת');
+{
+  const g = new Game({ size: 80, rand: seeded(9) });
+  const a = g.addPlayer({ name: 'א' }); g.spawn(a, { x: 76, y: 78 });
+  const m = mirrorOf(g), tr = new Net.Tracker(g);
+  let st = null, inRange = true, bad = 0;
+  for (let s = 0; s < 90; s++) {   // ימינה ולמטה באלכסון – חוצה את שני התפרים
+    a.h = a.target = Math.PI / 4; g.step(); g.events.length = 0;
+    if (s % 3 === 0) { st = Net.decodeSnap(Net.encodeSnap(g, tr, 0, false), m); const s0 = st.players[0];
+      if (!(s0.x >= 0 && s0.x < 80 && s0.y >= 0 && s0.y < 80)) inRange = false;
+      const d = same(g, m); if (d.trails || d.cells) bad++; }
+  }
+  ok(a.alive && a.x < 20 && a.y < 20, 'המארח חצה את שני התפרים בלי למות (' + a.x.toFixed(1) + ',' + a.y.toFixed(1) + ')');
+  ok(inRange && bad === 0, 'מיקומים בתמונות המצב עטופים ל-[0,W), והשובל אצל הלקוח זהה (מודולו W)');
+  const t = m.players[0].trail; let seg = 0; for (let k = 0; k + 3 < t.length; k += 2) seg = Math.max(seg, Math.hypot(t[k+2]-t[k], t[k+3]-t[k+1]));
+  ok(t.length > 20 && seg < 1, 'השובל אצל הלקוח רציף – בלי מקטע שחוצה את המפה (' + seg.toFixed(2) + ')');
+  ok(Math.abs(Net.lerpWrap(79, 1, 0.5, 80) - 0) < 1e-9 && Math.abs(Net.lerpWrap(1, 79, 0.25, 80) - 0.5) < 1e-9 && Math.abs(Net.lerpWrap(10, 20, 0.5, 80) - 15) < 1e-9,
+     'אינטרפולציה בלקוח לאורך ההפרש העטוף הקצר (79→1 עובר דרך 0)');
 }
 
 console.log('שחקן שעוזב');

@@ -145,7 +145,7 @@
   function beginPlay() {
     paths = [];
     setupMinimap();
-    effects = []; camX = me.x; camY = me.y;
+    effects = []; camX = me.x; camY = me.y; layer = null;
     $('hudAvatar').src = avatarURLs[me.id];
     $('feed').innerHTML = ''; lastBoardKey = '';
     $('minimap').classList.toggle('hidden', !S.mini);
@@ -340,30 +340,41 @@
       var sx = (x0 - layerX) * unitPx, sy = (y0 - layerY) * unitPx;
       c.beginPath(); c.rect(Math.floor(sx), Math.floor(sy), Math.ceil((x1 - x0) * unitPx) + 2, Math.ceil((y1 - y0) * unitPx) + 2); c.clip();
     }
-    c.fillStyle = '#d8dee9'; c.fillRect(0, 0, layer.width, layer.height);
+    // טורוס: אין "מחוץ למפה" ואין גבול – רקע אחיד ורשת רציפה (4 מחלק את כל גדלי המפה)
+    c.fillStyle = '#f4f6fa'; c.fillRect(0, 0, layer.width, layer.height);
     c.setTransform(unitPx, 0, 0, unitPx, -layerX * unitPx, -layerY * unitPx);
-    c.fillStyle = '#f4f6fa'; c.fillRect(0, 0, N, N);
-    // רשת עדינה כל 4 יחידות
-    var gx0 = Math.max(0, Math.floor(layerX / 4) * 4), gy0 = Math.max(0, Math.floor(layerY / 4) * 4);
-    var gx1 = Math.min(N, layerX + layer.width / unitPx), gy1 = Math.min(N, layerY + layer.height / unitPx);
+    var LW = layer.width / unitPx, LH = layer.height / unitPx;
+    var gx0 = Math.floor(layerX / 4) * 4, gy0 = Math.floor(layerY / 4) * 4, gx1 = layerX + LW, gy1 = layerY + LH;
     c.strokeStyle = '#e3e8f0'; c.lineWidth = 0.08; c.beginPath();
-    for (var x = gx0; x <= gx1; x += 4) { c.moveTo(x, Math.max(0, layerY)); c.lineTo(x, gy1); }
-    for (var y = gy0; y <= gy1; y += 4) { c.moveTo(Math.max(0, layerX), y); c.lineTo(gx1, y); }
+    for (var x = gx0; x <= gx1; x += 4) { c.moveTo(x, layerY); c.lineTo(x, gy1); }
+    for (var y = gy0; y <= gy1; y += 4) { c.moveTo(layerX, y); c.lineTo(gx1, y); }
     c.stroke();
-    var id;
-    // צל רך מתחת לכל שטח
-    c.translate(0, 0.28);
-    for (id = 1; id < paths.length; id++) if (paths[id]) { c.fillStyle = darkCss[id]; c.fill(paths[id], 'evenodd'); }
-    c.translate(0, -0.28);
+    // עותקי המפה (היסטים של W) שנוגעים בשכבה; הצורות עצמן עשויות לבלוט עד ~W מחוץ ל-[0,W)
+    var k0x = Math.floor(layerX / N) - 1, k1x = Math.floor((layerX + LW) / N) + 1;
+    var k0y = Math.floor(layerY / N) - 1, k1y = Math.floor((layerY + LH) / N) + 1;
+    var id, kx, ky;
     c.lineJoin = 'round';
-    for (id = 1; id < paths.length; id++) if (paths[id]) {
-      c.fillStyle = fillCss[id]; c.fill(paths[id], 'evenodd');
-      c.lineWidth = id === me.id ? 0.26 : 0.12;           // השטח שלי בולט יותר
-      c.strokeStyle = lineCss[id]; c.stroke(paths[id]);
+    for (ky = k0y; ky <= k1y; ky++) for (kx = k0x; kx <= k1x; kx++) {
+      c.save(); c.translate(kx * N, ky * N);
+      // צל רך מתחת לכל שטח
+      c.translate(0, 0.28);
+      for (id = 1; id < paths.length; id++) if (paths[id]) { c.fillStyle = darkCss[id]; c.fill(paths[id].fill, 'evenodd'); }
+      c.translate(0, -0.28);
+      for (id = 1; id < paths.length; id++) if (paths[id]) {
+        c.fillStyle = fillCss[id]; c.fill(paths[id].fill, 'evenodd');
+        c.lineWidth = id === me.id ? 0.26 : 0.12;           // השטח שלי בולט יותר
+        c.strokeStyle = lineCss[id]; c.stroke(paths[id].stroke);
+      }
+      c.restore();
     }
-    // גבול המפה
-    c.strokeStyle = '#4c566a'; c.lineWidth = 0.25; c.strokeRect(0, 0, N, N);
     c.restore();
+  }
+  function trailBox(t) { var b = [t[0], t[1], t[0], t[1]]; for (var i = 2; i < t.length; i += 2) { if (t[i] < b[0]) b[0] = t[i]; if (t[i] > b[2]) b[2] = t[i]; if (t[i + 1] < b[1]) b[1] = t[i + 1]; if (t[i + 1] > b[3]) b[3] = t[i + 1]; } return b; }
+  /* העותקים (היסטים בכפולות W) של מלבן עולם [x0,x1] שנחתכים עם [a0,a1] */
+  function images(x0, x1, a0, a1) {
+    var N = g.W, out = [];
+    for (var k = Math.floor((a0 - x1) / N); k <= Math.ceil((a1 - x0) / N); k++) if (x1 + k * N > a0 && x0 + k * N < a1) out.push(k * N);
+    return out;
   }
 
   var frames = 0;
@@ -379,7 +390,8 @@
       p.rh = p.h + dh * alpha;
       p.rx = p.x + Math.cos(p.rh) * step * alpha; p.ry = p.y + Math.sin(p.rh) * step * alpha;
     }
-    if (me.alive) { camX = me.rx; camY = me.ry; }
+    // מצלמה רציפה: נעה בהפרש העטוף הקצר, כך שבחציית תפר אין קפיצה (camX יכול לצאת מ-[0,W))
+    if (me.alive) { camX += g.wd(me.rx - camX); camY += g.wd(me.ry - camY); }
     var vx0 = camX - cw / 2 / unitPx, vy0 = camY - ch / 2 / unitPx, vw = cw / unitPx, vh = ch / unitPx;
     var margin = 8;
     if (!layer || vx0 < layerX || vy0 < layerY || vx0 + vw > layerX + layer.width / unitPx || vy0 + vh > layerY + layer.height / unitPx) {
@@ -387,8 +399,11 @@
       layerX = vx0 - margin; layerY = vy0 - margin;
       renderLayer(); dirtyWorld = null;
     } else if (dirtyWorld) {
-      var d = dirtyWorld; dirtyWorld = null;
-      if (d[2] > layerX && d[3] > layerY && d[0] < layerX + layer.width / unitPx && d[1] < layerY + layer.height / unitPx) renderLayer(d[0], d[1], d[2], d[3]);
+      var d = dirtyWorld, LW2 = layer.width / unitPx, LH2 = layer.height / unitPx; dirtyWorld = null;
+      // האזור המלוכלך (ב-[0,W)) מצויר מחדש בכל עותק שלו שנראה בשכבה – עובד גם מעבר לתפר
+      var ix = images(d[0], d[2], layerX, layerX + LW2), iy = images(d[1], d[3], layerY, layerY + LH2);
+      for (var a = 0; a < iy.length; a++) for (var b2 = 0; b2 < ix.length; b2++)
+        renderLayer(d[0] + ix[b2], d[1] + iy[a], d[2] + ix[b2], d[3] + iy[a]);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(layer, Math.round((layerX - vx0) * unitPx), Math.round((layerY - vy0) * unitPx));
@@ -399,10 +414,20 @@
     for (k = 0; k < ps.length; k++) {
       p = ps[k];
       if (!p.alive || !p.trail.length) continue;
-      var t = p.trail;
-      ctx.strokeStyle = trailCss[p.id]; ctx.beginPath(); ctx.moveTo(t[0], t[1]);
-      for (var i = 2; i < t.length; i += 2) ctx.lineTo(t[i], t[i + 1]);
-      ctx.lineTo(p.x, p.y); ctx.lineTo(p.rx, p.ry);
+      var t = p.trail, tl = t.length, lx = t[tl - 2], ly = t[tl - 1];
+      // הראש "פרוש" ביחס לנקודה האחרונה; השובל כולו מוזז כך שהראש בעותק הקרוב למצלמה
+      var hx0 = lx + g.wd(p.x - lx), hy0 = ly + g.wd(p.y - ly), hx1 = hx0 + (p.rx - p.x), hy1 = hy0 + (p.ry - p.y);
+      var sx = camX + g.wd(hx1 - camX) - hx1, sy = camY + g.wd(hy1 - camY) - hy1;
+      var tb = trailBox(t), bx0 = Math.min(tb[0], hx1) + sx, bx1 = Math.max(tb[2], hx1) + sx, by0 = Math.min(tb[1], hy1) + sy, by1 = Math.max(tb[3], hy1) + sy;
+      // עותקים נוספים (±W) רק אם הם נראים – כך השובל נראה משני צדי התפר
+      var ox = images(bx0, bx1, vx0 - 1, vx0 + vw + 1), oy = images(by0, by1, vy0 - 1, vy0 + vh + 1);
+      ctx.strokeStyle = trailCss[p.id]; ctx.beginPath();
+      for (var a2 = 0; a2 < oy.length; a2++) for (var b3 = 0; b3 < ox.length; b3++) {
+        var X = sx + ox[b3], Y = sy + oy[a2];
+        ctx.moveTo(t[0] + X, t[1] + Y);
+        for (var i = 2; i < tl; i += 2) ctx.lineTo(t[i] + X, t[i + 1] + Y);
+        ctx.lineTo(hx0 + X, hy0 + Y); ctx.lineTo(hx1 + X, hy1 + Y);
+      }
       ctx.stroke();
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -414,22 +439,24 @@
     for (k = 0; k < ps.length; k++) {
       p = ps[k];
       if (!p.alive) continue;
-      var hx = (p.rx - vx0) * unitPx, hy = (p.ry - vy0) * unitPx;
-      if (hx < -size * 2 || hy < -size * 2 || hx > cw + size * 2 || hy > ch + size * 2) continue;
-      var head = p.rh;
-      var blink = 0;
-      if (now > p.blinkAt) { var bt = (now - p.blinkAt) / 140; if (bt >= 1) p.blinkAt = now + 2000 + Math.random() * 3500; else blink = Math.sin(bt * Math.PI); }
-      Emoji.draw(ctx, p.emoji, p.color, lineCss[p.id], hx, hy, size, head);
-      ctx.lineWidth = Math.max(2, fontPx * 0.3); ctx.strokeStyle = 'rgba(255,255,255,.85)';
-      ctx.strokeText(p.name, hx, hy - size * 0.62);
-      ctx.fillStyle = '#3b4252'; ctx.fillText(p.name, hx, hy - size * 0.62);
+      // העותק הקרוב למצלמה, ועוד עותקים אם השחקן ליד תפר ונראה פעמיים (מפה קטנה/מסך רחב)
+      var wx = camX + g.wd(p.rx - camX), wy = camY + g.wd(p.ry - camY), pad = 2 * size / unitPx;
+      var px2 = images(wx - pad, wx + pad, vx0, vx0 + vw), py2 = images(wy - pad, wy + pad, vy0, vy0 + vh);
+      for (var a3 = 0; a3 < py2.length; a3++) for (var b4 = 0; b4 < px2.length; b4++) {
+        var hx = (wx + px2[b4] - vx0) * unitPx, hy = (wy + py2[a3] - vy0) * unitPx;
+        Emoji.draw(ctx, p.emoji, p.color, lineCss[p.id], hx, hy, size, p.rh);
+        ctx.lineWidth = Math.max(2, fontPx * 0.3); ctx.strokeStyle = 'rgba(255,255,255,.85)';
+        ctx.strokeText(p.name, hx, hy - size * 0.62);
+        ctx.fillStyle = '#3b4252'; ctx.fillText(p.name, hx, hy - size * 0.62);
+      }
     }
     // אפקט פסילה
     for (var e = effects.length - 1; e >= 0; e--) {
       var f = effects[e], age = (now - f.t0) / 600;
       if (age >= 1) { effects.splice(e, 1); continue; }
       ctx.globalAlpha = 1 - age; ctx.strokeStyle = f.color; ctx.lineWidth = unitPx * 0.3;
-      ctx.beginPath(); ctx.arc((f.x - vx0) * unitPx, (f.y - vy0) * unitPx, unitPx * (0.6 + age * 3), 0, Math.PI * 2); ctx.stroke();
+      var fx = camX + g.wd(f.x - camX), fy = camY + g.wd(f.y - camY);
+      ctx.beginPath(); ctx.arc((fx - vx0) * unitPx, (fy - vy0) * unitPx, unitPx * (0.6 + age * 3), 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 1;
     }
   }
@@ -454,11 +481,14 @@
       if (mmDirty) { mmCtx.putImageData(mmImg, 0, 0); mmDirty = false; }
       var mw = mini.width;
       mctx.clearRect(0, 0, mw, mw); mctx.imageSmoothingEnabled = true;
-      mctx.drawImage(mm, 0, 0, mw, mw);
-      // מקרא: האימוג'י של כל שחקן במיקומו (sprite קטן, בלי fillText)
-      for (var q = 0; q < g.players.length; q++) { var pp = g.players[q]; if (!pp.alive || pp === me) continue;
-        var sp = Emoji.badge(pp.emoji, 15, pp.color, lineCss[pp.id]); mctx.drawImage(sp, pp.x / g.W * mw - 7.5, pp.y / g.W * mw - 7.5); }
-      if (me.alive) { var ms = Emoji.badge(me.emoji, 19, me.color, "#2e3440"); mctx.drawImage(ms, me.x / g.W * mw - 9.5, me.y / g.W * mw - 9.5); }
+      // v7: מפה ממורכזת עליי – תמונת השטחים נפרשת (4 עותקים) ומוזזת כך שאני תמיד באמצע.
+      // אין שחקנים במפה בכלל (לא אימוג'י ולא נקודות) – רק שטחים, וצלב עדין במרכז.
+      var ox2 = ((0.5 - (camX / g.W)) % 1 + 1) % 1 * mw, oy2 = ((0.5 - (camY / g.W)) % 1 + 1) % 1 * mw;
+      for (var ty = -1; ty <= 0; ty++) for (var tx = -1; tx <= 0; tx++) mctx.drawImage(mm, ox2 + tx * mw, oy2 + ty * mw, mw, mw);
+      var mc = mw / 2;
+      mctx.strokeStyle = 'rgba(46,52,64,.45)'; mctx.lineWidth = 1.2; mctx.beginPath();
+      mctx.moveTo(mc - 6, mc); mctx.lineTo(mc - 2, mc); mctx.moveTo(mc + 2, mc); mctx.lineTo(mc + 6, mc);
+      mctx.moveTo(mc, mc - 6); mctx.lineTo(mc, mc - 2); mctx.moveTo(mc, mc + 2); mctx.lineTo(mc, mc + 6); mctx.stroke();
     }
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -491,7 +521,7 @@
     if (best > BEST.pct) BEST.pct = best;
     if (kills > BEST.kills) BEST.kills = kills;
     save('kovesh.best', BEST);
-    var reasons = { wall: 'נתקלת בקצה המפה', self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש' };
+    var reasons = { self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש' };
     var r = reasons[ev.reason] || '';
     if (ev.killer) r += ' – ' + nm(ev.killer);
     $('overReason').textContent = r;
@@ -586,5 +616,5 @@
     TICK_MS: TICK_MS
   };
   // חשיפה לבדיקות אוטומטיות בלבד
-  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, start: startGame, pause: pause };
+  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, start: startGame, pause: pause };
 })();

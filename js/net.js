@@ -40,11 +40,12 @@
     for (k = 0; k < ps.length; k++) {
       var p = ps[k], t = p.trail, L = t.length / 2, s = tr.sent[p.id] || (tr.sent[p.id] = { len: 0, fx: 0, fy: 0 });
       w.u8(p.id); w.u8((p.alive ? 1 : 0) | (p.gone ? 2 : 0));
-      w.u16(q(p.x)); w.u16(q(p.y)); w.i16(Math.round(p.h * HQ)); w.u16(Math.min(65535, p.kills));
+      w.u16(q(g.wrap(p.x))); w.u16(q(g.wrap(p.y))); w.i16(Math.round(p.h * HQ)); w.u16(Math.min(65535, p.kills));
       var start = (L > 0 && s.len > 0 && L >= s.len && t[0] === s.fx && t[1] === s.fy) ? s.len : 0;
       if (!p.alive) { start = 0; L = 0; }
       w.u16(start); w.u16(L - start);
-      for (i = start; i < L; i++) { w.u16(q(t[2 * i])); w.u16(q(t[2 * i + 1])); }
+      // טורוס: נקודות השובל נשלחות עטופות ל-[0,W) (ה-u16 לא מקבל שליליים); הלקוח פורש מחדש
+      for (i = start; i < L; i++) { w.u16(q(g.wrap(t[2 * i]))); w.u16(q(g.wrap(t[2 * i + 1]))); }
       s.len = L; s.fx = L ? t[0] : 0; s.fy = L ? t[1] : 0;
     }
     // שטח: רק מה שהשתנה
@@ -71,7 +72,13 @@
       var start = r.u16(), cnt = r.u16(), p = g.players[id - 1];
       var pts = p ? p.trail : [];
       if (p) { if (pts.length > start * 2) pts.length = start * 2; else while (pts.length < start * 2) pts.push(st.x, st.y); }
-      for (var i = 0; i < cnt; i++) { var x = r.u16() / Q, y = r.u16() / Q; if (p) pts.push(x, y); }
+      for (var i = 0; i < cnt; i++) {
+        var x = r.u16() / Q, y = r.u16() / Q;
+        if (!p) continue;
+        var n2 = pts.length;   // פרישה מחדש: כל נקודה קרובה לקודמת, כמו אצל המארח (עד כדי כפולה של W)
+        if (n2) { x = pts[n2 - 2] + g.wd(x - pts[n2 - 2]); y = pts[n2 - 1] + g.wd(y - pts[n2 - 1]); }
+        pts.push(x, y);
+      }
       out.players.push(st);
     }
     var pos = 0, o = g.owner;
@@ -111,7 +118,13 @@
     }).sort(function (a, b) { return b.pct - a.pct || b.kills - a.kills || b.best - a.best; });
   }
 
-  var Net = { encodeSnap: encodeSnap, decodeSnap: decodeSnap, Tracker: Tracker, roomCode: roomCode, cleanCode: cleanCode, validCode: validCode, cleanName: cleanName, InputThrottle: InputThrottle, ranking: ranking, Q: Q };
+  /* אינטרפולציה על טורוס: מ-a ל-b לאורך ההפרש הקצר, התוצאה עטופה ל-[0,W) */
+  function lerpWrap(a, b, f, W) {
+    var d = (b - a) % W; if (d > W / 2) d -= W; else if (d < -W / 2) d += W;
+    var v = (a + d * f) % W; return v < 0 ? v + W : v;
+  }
+
+  var Net = { lerpWrap: lerpWrap, encodeSnap: encodeSnap, decodeSnap: decodeSnap, Tracker: Tracker, roomCode: roomCode, cleanCode: cleanCode, validCode: validCode, cleanName: cleanName, InputThrottle: InputThrottle, ranking: ranking, Q: Q };
   if (typeof module !== 'undefined' && module.exports) module.exports = Net;
   else root.Net = Net;
 })(this);
