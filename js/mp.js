@@ -1,4 +1,4 @@
-/* Emojiverse (לשעבר כובש) – משחק משפחתי אונליין: מארח-מחליט, עמית-לעמית (WebRTC) דרך PeerJS. נכתב מאפס.
+/* Emojiverse (לשעבר כובש) – ממשחק אונליין: מארח-מחליט, עמית-לעמית (WebRTC) דרך PeerJS. נכתב מאפס.
    טלפון אחד "מארח" ומריץ את כל הסימולציה (כולל בוטים); האחרים שולחים רק כיוון רצוי
    ומקבלים תמונות מצב (~20 בשנייה, שטח כדלתות). שרת התיאום הציבורי של PeerJS משמש רק
    ליצירת החיבור; המשחק עצמו עובר ישירות בין הטלפונים (או דרך שרת ה-TURN הציבורי של PeerJS אם צריך).
@@ -87,7 +87,7 @@
   segBind('mpBotsSeg', 'bots', Number); segBind('mpDiffSeg', 'diff'); segBind('mpTimeSeg', 'minutes', Number);
   $('shareBtn').onclick = function () {
     var url = shareURL(), text = 'בואו לשחק איתי Emojiverse! קוד החדר: ' + code;
-    if (navigator.share) navigator.share({ title: 'Emojiverse – משחק משפחתי', text: text, url: url }).catch(function () {});
+    if (navigator.share) navigator.share({ title: 'Emojiverse – משחק אונליין', text: text, url: url }).catch(function () {});
     else { try { navigator.clipboard.writeText(url); msg('lobbyMsg', 'הקישור הועתק'); } catch (e) {} }
   };
   function shareURL() { return location.origin + location.pathname.replace(/index\.html$/, '') + '?room=' + code; }

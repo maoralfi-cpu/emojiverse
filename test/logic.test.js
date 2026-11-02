@@ -289,5 +289,94 @@ for (const lvl of ['easy', 'normal', 'hard']) {
   const ms = Date.now() - t0;
   ok(cons && captures > 200 && deaths < captures / 3, `${lvl}: ${captures} כיבושים, ${deaths} מיתות ${JSON.stringify(reasons)}, ${(ms / ticks).toFixed(2)}ms לצעד, שטח מקס' ${Math.max(...g.players.map(p => p.bestPct)).toFixed(1)}%`);
 }
+
+// ---------- v8: איים והולדה בטוחה ----------
+function ownComps(g, id) { // מספר רכיבי הקשירות של השטח של id (4 שכנים, עוטף) – מימוש נאיבי
+  const G = g.G, seen = new Uint8Array(G * G); let c = 0;
+  for (let s0 = 0; s0 < G * G; s0++) { if (g.owner[s0] !== id || seen[s0]) continue; c++; const st = [s0]; seen[s0] = 1;
+    while (st.length) { const k = st.pop(), x = k % G, y = (k - x) / G;
+      for (const [nx, ny] of [[x-1,y],[x+1,y],[x,y-1],[x,y+1]]) { const j = ((ny+G)%G)*G + (nx+G)%G; if (g.owner[j] === id && !seen[j]) { seen[j] = 1; st.push(j); } } } }
+  return c;
+}
+function rect(g, id, x0, y0, x1, y1) { for (let y = y0; y < y1; y += g.CELL) for (let x = x0; x < x1; x += g.CELL) g.setOwner(g.cellAt(x + 0.01, y + 0.01), id); }
+const realCount = (g, id) => { let n = 0; for (const v of g.owner) if (v === id) n++; return n; };
+console.log('v8: איים');
+{ // כיבוש אמיתי שחותך את השטח של א' לשניים – החלק בלי הדמות נעלם
+  const g = new Game({ size: 80, rand: seeded(31) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 12, y: 12 }); rect(g, a.id, 8, 9, 34, 15);
+  g.spawn(b, { x: 22, y: 30 }); g._lost.fill(0);
+  const before = g.counts[a.id];
+  // א' "עומד" בבית: מחזירים אותו לנקודה (12,12) אחרי כל צעד
+  const goB = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && b.alive; i++) { b.h = b.target = ang; g.step(); a.x = a.px = 12; a.y = a.py = 12; a.trail = []; } };
+  goB(U, 26); goB(R, 2.5); goB(D, 25);
+  ok(b.alive && !b.trail.length && own(g, b, 23, 12), 'ב\' כבש רצועה דרך השטח של א\'');
+  ok(ownComps(g, a.id) === 1 && own(g, a, 12, 12) && !own(g, a, 31, 12) && g.ownerAt(31, 12) === 0, 'החלק המנותק של א\' (בלי הדמות) נעלם והפך לניטרלי');
+  ok(g.counts[a.id] === realCount(g, a.id) && g.counts[a.id] < before / 2 + 60, 'הספירה (וה-%) של א\' עודכנה: ' + before + ' → ' + g.counts[a.id]);
+}
+// להקפאה: שחקן שלא זז
+function frozen(p) { p.speed = 0; }
+{ // אי שחוצה את התפר
+  const g = new Game({ size: 80, rand: seeded(32) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 66, y: 40 }); rect(g, a.id, 62, 37, 80, 43); rect(g, a.id, 0, 37, 10, 43);
+  g.spawn(b, { x: 40, y: 10 }); g._lost.fill(0);
+  rect(g, b.id, 70, 30, 72, 50);            // ב' "כובש" רצועה אנכית – החלק 72..90 (חוצה את x=0) מנותק
+  g.pruneIslands();
+  ok(own(g, a, 66, 40) && !own(g, a, 76, 40) && !own(g, a, 5, 40) && ownComps(g, a.id) === 1 && g.counts[a.id] === realCount(g, a.id), 'אי שחוצה את התפר נעלם בשלמותו');
+}
+{ // שחקן בחוץ עם שובל שומר את הרכיב שממנו יצא, גם אם הוא הקטן
+  const g = new Game({ size: 80, rand: seeded(33) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 12, y: 40 }); rect(g, a.id, 14, 37, 50, 43);
+  g.spawn(b, { x: 40, y: 10 });
+  go(g, a, U, 6); // יוצא מלמעלה – שובל מתחיל ליד (12,~37)
+  ok(a.alive && a.trail.length > 0, 'א\' בחוץ עם שובל');
+  g._lost.fill(0);
+  rect(g, b.id, 18, 30, 20, 50); g.pruneIslands();   // חותך: שמאל קטן (העוגן) / ימין גדול
+  ok(own(g, a, 12, 40) && !own(g, a, 40, 40) && ownComps(g, a.id) === 1, 'נשאר רכיב העוגן (ממנו השובל יצא), לא הגדול');
+  go(g, a, R, 2); go(g, a, D, 7);
+  ok(a.alive && !a.trail.length, 'וחזרה אליו סוגרת לולאה כרגיל');
+}
+console.log('v8: הולדה בטוחה');
+{
+  const g = new Game({ size: 100, rand: seeded(41) });
+  const ps = []; for (let i = 0; i < 6; i++) { const p = g.addPlayer({ isBot: true }); g.spawn(p); ps.push(p); }
+  let minHead = Infinity, minTerr = Infinity;
+  for (let i = 0; i < ps.length; i++) for (let j = 0; j < i; j++) minHead = Math.min(minHead, Math.sqrt(g.dist2(ps[i].x, ps[i].y, ps[j].x, ps[j].y)));
+  ok(minHead >= 15, 'מפה ריקה: מרחק בין ראשים ≥15 (' + minHead.toFixed(1) + ')');
+  ok(g.lastSpawnScore >= 1, 'מפה ריקה: נמצא מקום שעומד בכל הדרישות (ציון ' + g.lastSpawnScore.toFixed(2) + ')');
+}
+{ // מפה צפופה: הולדה לא דורסת שטח ולא חותכת שובל
+  const g = new Game({ size: 40, rand: seeded(42) });
+  const ps = []; for (let i = 0; i < 8; i++) { const p = g.addPlayer({ isBot: true }); g.spawn(p); ps.push(p); }
+  for (let s = 0; s < 600; s++) { for (const p of ps) if (p.alive && (g.tickNo + p.id) % 2 === 0) AI.think(g, p, 'normal'); g.step(); g.events.length = 0; }
+  let overwritten = 0, trailCut = 0, spawns = 0;
+  for (const p of ps) {
+    if (p.alive) g.kill(p, null, 'test');
+    const snap = g.owner.slice(), trails = ps.map(q => q.trail.slice());
+    g.spawn(p); spawns++;
+    for (let i = 0; i < snap.length; i++) if (snap[i] && snap[i] !== g.owner[i]) overwritten++;
+    ps.forEach((q, k) => { if (q !== p && q.trail.length !== trails[k].length) trailCut++; });
+  }
+  ok(spawns === 8 && overwritten === 0 && trailCut === 0, 'מפה צפופה: ' + spawns + ' הולדות, 0 תאים זרים נדרסו, 0 שובלים נפגעו');
+  ok(ps.every(p => p.alive && g.counts[p.id] > 0), 'כולם נולדו עם שטח');
+}
+console.log('v8: סימולציה ארוכה – אין איים');
+{
+  const g = new Game({ size: 80, rand: seeded(51) });
+  for (let i = 0; i < 8; i++) g.spawn(g.addPlayer({ isBot: true }));
+  let bad = 0, islandsRemoved = 0, captures = 0, countBad = 0;
+  for (let s = 0; s < 6000; s++) {
+    for (const p of g.players) if (p.alive && (g.tickNo + p.id) % 2 === 0) AI.think(g, p, 'hard');
+    g.step();
+    for (const e of g.events) { if (e.type === 'island') islandsRemoved++; if (e.type === 'capture') captures++; }
+    g.events.length = 0;
+    if (s % 3 === 0) for (const p of g.players) { if (g.counts[p.id] > 0 && ownComps(g, p.id) !== 1) bad++; }
+    if (s % 300 === 0) for (const p of g.players) if (g.counts[p.id] !== realCount(g, p.id)) countBad++;
+    if (s % 60 === 0) for (const p of g.players) if (!p.alive) g.spawn(p);
+  }
+  ok(bad === 0 && countBad === 0, '6000 צעדים, 8 בוטים קשים: כל שטח הוא רכיב אחד בכל בדיקה (' + captures + ' כיבושים, ' + islandsRemoved + ' איים הוסרו)');
+}
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);

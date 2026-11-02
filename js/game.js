@@ -21,6 +21,8 @@
     this.HIT = 0.5;                     // מרחק פגיעה בשובל
     this.HEADON = 1.2;                  // מרחק התנגשות ראש בראש
     this.SPAWN_R = 3.2;
+    this.SPAWN_CLEAR = 6;               // v8: מרווח מינימלי (מעבר לרדיוס ההתחלתי) משטח/שובל זר
+    this.SPAWN_HEAD = 15;               // v8: מרווח מינימלי מראש של שחקן אחר
     this.SELF_SKIP = Math.max(4, Math.ceil(1.6 / (this.SPEED * this.DT))); // מקטעים אחרונים (~1.6 יח') שלא נבדקים בשובל העצמי
     this.STAMP_R = 0.55;                // עובי השובל כשהוא הופך לשטח
     var n = this.G * this.G;
@@ -33,7 +35,7 @@
     this.events = [];
     this.tickNo = 0;
     this.rand = opts.rand || Math.random;
-    this._mark = new Int32Array(n); this._gen = 0; this._queue = new Int32Array(n);
+    this._mark = new Int32Array(n); this._gen = 0; this._lost = new Uint8Array(64); this._queue = new Int32Array(n);
   }
   Game.TAU = TAU;
   var P = Game.prototype;
@@ -78,7 +80,7 @@
   P.setOwner = function (i, id) {
     var o = this.owner[i];
     if (o === id) return;
-    if (o) { this.counts[o]--; this.dirtyOwners[o] = 1; }
+    if (o) { this.counts[o]--; this.dirtyOwners[o] = 1; if (id) this._lost[o] = 1; }
     if (id) { this.counts[id]++; this.dirtyOwners[id] = 1; }
     this.owner[i] = id;
     this.dirtyCells.push(i);
@@ -98,16 +100,38 @@
     return p;
   };
 
-  P.findSpawn = function () {
-    var W = this.W, R = this.SPAWN_R;
-    for (var attempt = 0; attempt < 300; attempt++) {
-      var x = this.rand() * W, y = this.rand() * W;      // בכל מקום – אין קצוות
-      var rr = attempt < 150 ? R + 3 : R + 0.5;
-      if (!this.areaFree(x, y, rr)) continue;
-      if (this.nearAnything(x, y, R + 4)) continue;
-      return { x: x, y: y };
+  /* v8: הולדה בטוחה (עם עטיפה). דוגמים מועמדים ומודדים לכל אחד את המרחק לשטח זר, לשובלים ולראשים.
+     נדרש: שטח/שובל ≥ SPAWN_R + SPAWN_CLEAR, ראש ≥ SPAWN_HEAD. אם אין מועמד כזה (מפה צפופה) –
+     בוחרים את המועמד עם המרווח היחסי הגדול ביותר. תמיד מחזיר נקודה. */
+  P.findSpawn = function (exceptId) {
+    var W = this.W, R = this.SPAWN_R, C = this.CELL, G = this.G, o = this.owner, k, i;
+    var needT = R + this.SPAWN_CLEAR, needH = this.SPAWN_HEAD;
+    // שטח זר בדגימה גסה (כל 4 תאים = 2 יח'), שובלים כל נקודה שנייה, ראשים
+    var terr = [], trails = [], heads = [];
+    for (var cy = 0; cy < G; cy += 4) for (var cx = 0; cx < G; cx += 4) { var w = o[cy * G + cx]; if (w && w !== exceptId) terr.push((cx + 0.5) * C, (cy + 0.5) * C); }
+    for (k = 0; k < this.players.length; k++) {
+      var q = this.players[k];
+      if (!q.alive || q.id === exceptId) continue;
+      heads.push(q.x, q.y);
+      for (i = 0; i < q.trail.length; i += 4) trails.push(q.trail[i], q.trail[i + 1]);
     }
-    return null;
+    var self = this;
+    function minD2(arr, x, y, stop) {
+      var best = Infinity;
+      for (var j = 0; j < arr.length; j += 2) { var d = self.dist2(x, y, arr[j], arr[j + 1]); if (d < best) { best = d; if (best < stop) return best; } }
+      return best;
+    }
+    var bestScore = -Infinity, bx = W / 2, by = W / 2;
+    for (var attempt = 0; attempt < 160; attempt++) {
+      var x = this.rand() * W, y = this.rand() * W;
+      // ציון = המרווח היחסי הגרוע מבין שלושת הסוגים (≥1 = עומד בדרישה)
+      var stop = bestScore > 0 ? 0 : -1;
+      var st = Math.sqrt(Math.min(minD2(terr, x, y, -1), minD2(trails, x, y, -1))) - 1.5 /* דגימה גסה */;
+      var score = Math.min(st / needT, Math.sqrt(minD2(heads, x, y, -1)) / needH);
+      if (score > bestScore) { bestScore = score; bx = x; by = y; if (score >= 1.6) break; }
+    }
+    this.lastSpawnScore = bestScore;
+    return { x: bx, y: by };
   };
   P.areaFree = function (x, y, r) {
     var C = this.CELL, G = this.G;
@@ -132,23 +156,27 @@
   };
 
   /* מטביע עיגול של תאים כשטח של id */
-  P.stamp = function (x, y, r, id) {
+  P.stamp = function (x, y, r, id, onlyFree) {
     var C = this.CELL, G = this.G;
     var x0 = Math.floor((x - r) / C), x1 = Math.floor((x + r) / C), y0 = Math.floor((y - r) / C), y1 = Math.floor((y + r) / C);
     for (var cy = y0; cy <= y1; cy++) for (var cx = x0; cx <= x1; cx++) {
       var dx = (cx + 0.5) * C - x, dy = (cy + 0.5) * C - y;
-      if (dx * dx + dy * dy <= r * r) this.setOwner(mod(cy, G) * G + mod(cx, G), id);
+      if (dx * dx + dy * dy > r * r) continue;
+      var ci = mod(cy, G) * G + mod(cx, G);
+      if (onlyFree && this.owner[ci] && this.owner[ci] !== id) continue;   // הולדה לא דורסת שטח של אחרים
+      this.setOwner(ci, id);
     }
   };
 
   P.spawn = function (p, at) {
-    at = at || this.findSpawn();
+    if (this.counts[p.id] > 0) { var o0 = this.owner; for (var j0 = 0; j0 < o0.length; j0++) if (o0[j0] === p.id) this.setOwner(j0, 0); }
+    at = at || this.findSpawn(p.id);
     if (!at) return false;
-    this.stamp(at.x, at.y, this.SPAWN_R, p.id);
+    this.stamp(at.x, at.y, this.SPAWN_R, p.id, true);
     at = { x: mod(at.x, this.W), y: mod(at.y, this.W) };
     p.x = p.px = p.homeX = at.x; p.y = p.py = p.homeY = at.y;
     p.h = p.ph = p.target = this.rand() * TAU; p.turnInput = 0;
-    p.trail = []; p.alive = true; p.ai = null;
+    p.trail = []; p.alive = true; p.ai = null; p.anchor = this.cellAt(at.x, at.y);
     return true;
   };
 
@@ -314,14 +342,74 @@
       if (home) {
         if (p.trail.length) { var tl0 = p.trail.length; p.trail.push(p.trail[tl0 - 2] + this.wd(p.x - p.trail[tl0 - 2]), p.trail[tl0 - 1] + this.wd(p.y - p.trail[tl0 - 1])); this.capture(p); }
       } else {
-        if (!p.trail.length) { p.trail.push(p.px, p.py); p.tb = [p.px, p.py, p.px, p.py]; }
+        if (!p.trail.length) {
+          p.trail.push(p.px, p.py); p.tb = [p.px, p.py, p.px, p.py];
+          // v8: עוגן = התא שלי שממנו השובל יצא (המיקום הקודם, או שכן שלו)
+          p.anchor = this.ownCellNear(p, p.px, p.py);
+        }
         // נקודה חדשה "פרושה" ביחס לקודמת – השובל רציף גם כשחוצים את התפר
         var tl = p.trail.length, nx = p.trail[tl - 2] + this.wd(p.x - p.trail[tl - 2]), ny = p.trail[tl - 1] + this.wd(p.y - p.trail[tl - 1]);
         p.trail.push(nx, ny);
         var t = p.tb; if (nx < t[0]) t[0] = nx; if (ny < t[1]) t[1] = ny; if (nx > t[2]) t[2] = nx; if (ny > t[3]) t[3] = ny;
       }
     }
+    this.pruneIslands();
     for (k = 0; k < ps.length; k++) { p = ps[k]; if (p.alive) { var pc = this.pct(p); if (pc > p.bestPct) p.bestPct = pc; } }
+  };
+
+  P.ownCellNear = function (p, x, y) {
+    var C = this.CELL, G = this.G, cx = Math.floor(x / C), cy = Math.floor(y / C);
+    for (var r = 0; r <= 2; r++) for (var dy = -r; dy <= r; dy++) for (var dx = -r; dx <= r; dx++) {
+      var i = mod(cy + dy, G) * G + mod(cx + dx, G); if (this.owner[i] === p.id) return i;
+    }
+    return -1;
+  };
+  /* v8: איים. לכל שחקן שאיבד תאים בצעד הזה – משאירים רק את רכיב העוגן (4 שכנים, עוטף):
+     בבית – הרכיב שמתחת לראש; בחוץ עם שובל – הרכיב שממנו השובל יצא. אם העוגן נכבש – הרכיב הגדול.
+     כל שאר החלקים חוזרים להיות ניטרליים. */
+  P.pruneIslands = function () {
+    var lost = this._lost, removed = 0;
+    for (var id = 1; id < lost.length; id++) {
+      if (!lost[id]) continue;
+      lost[id] = 0;
+      var p = this.players[id - 1];
+      if (p && this.counts[id] > 0) removed += this.pruneOne(p);
+    }
+    return removed;
+  };
+  P.pruneOne = function (p) {
+    var id = p.id, o = this.owner, G = this.G, n = o.length, mark = this._mark, q = this._queue;
+    var a = -1;
+    if (!p.alive) a = -1;
+    else if (!p.trail.length) { a = this.cellAt(p.x, p.y); if (o[a] !== id) a = this.ownCellNear(p, p.x, p.y); }
+    else a = p.anchor != null && p.anchor >= 0 && o[p.anchor] === id ? p.anchor : -1;
+    var self = this;
+    function fill(s0, m) {
+      var qh = 0, qt = 0; mark[s0] = m; q[qt++] = s0;
+      while (qh < qt) {
+        var i = q[qh++], x = i % G, y = (i - x) / G, nb;
+        nb = y * G + (x ? x - 1 : G - 1); if (o[nb] === id && mark[nb] !== m) { mark[nb] = m; q[qt++] = nb; }
+        nb = y * G + (x < G - 1 ? x + 1 : 0); if (o[nb] === id && mark[nb] !== m) { mark[nb] = m; q[qt++] = nb; }
+        nb = (y ? y - 1 : G - 1) * G + x; if (o[nb] === id && mark[nb] !== m) { mark[nb] = m; q[qt++] = nb; }
+        nb = (y < G - 1 ? y + 1 : 0) * G + x; if (o[nb] === id && mark[nb] !== m) { mark[nb] = m; q[qt++] = nb; }
+      }
+      return qt;
+    }
+    var keep;
+    if (a >= 0) {
+      keep = ++this._gen;
+      if (fill(a, keep) === this.counts[id]) return 0;          // רכיב אחד – אין איים
+    } else {
+      // אין עוגן: הרכיב הגדול ביותר
+      var base = this._gen + 1, best = 0, c = 0;
+      for (var s0 = 0; s0 < n; s0++) if (o[s0] === id && mark[s0] < base) { var sz = fill(s0, base + c); if (sz > best) { best = sz; keep = base + c; } c++; }
+      this._gen = base + c;
+      if (c <= 1) return 0;
+    }
+    var removed = 0;
+    for (var j = 0; j < n; j++) if (o[j] === id && mark[j] !== keep) { this.setOwner(j, 0); removed++; }
+    this.events.push({ type: 'island', player: p, cells: removed });
+    return removed;
   };
 
   /* סינון מהיר: האם מקטע התנועה של p קרוב לתיבה התוחמת של השובל של q (עם עטיפה) */

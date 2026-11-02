@@ -75,6 +75,22 @@ console.log('טורוס: חציית תפר ברשת');
      'אינטרפולציה בלקוח לאורך ההפרש העטוף הקצר (79→1 עובר דרך 0)');
 }
 
+console.log('v8: איים ברשת');
+{
+  const g = new Game({ size: 80, rand: seeded(12) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 12, y: 40 }); g.spawn(b, { x: 60, y: 10 });
+  for (let x = 14; x < 50; x += 0.5) for (let y = 37; y < 43; y += 0.5) g.setOwner(g.cellAt(x + .01, y + .01), a.id);
+  const m = mirrorOf(g), tr = new Net.Tracker(g);
+  Net.decodeSnap(Net.encodeSnap(g, tr, 0, false), m);
+  g._lost.fill(0);
+  for (let y = 30; y < 50; y += 0.5) for (let x = 20; x < 22; x += 0.5) g.setOwner(g.cellAt(x + .01, y + .01), b.id);
+  const removed = g.pruneIslands();
+  Net.decodeSnap(Net.encodeSnap(g, tr, 0, false), m);
+  const d = same(g, m);
+  ok(removed > 300 && !d.cells && !d.counts && m.ownerAt(40, 40) === 0, 'המארח מסיר אי (' + removed + ' תאים), הלקוח מקבל את ההסרה בדלתא');
+}
+
 console.log('שחקן שעוזב');
 {
   const g = new Game({ size: 80, rand: seeded(7) });
