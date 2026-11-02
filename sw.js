@@ -1,12 +1,13 @@
 /* Emojiverse (לשעבר כובש) – Service Worker: שומר את כל הקבצים לעבודה מלאה בלי אינטרנט */
-const VERSION = 'emojiverse-20261102154051';
+const VERSION = 'emojiverse-20261102155355';
+const STAMP = VERSION.split('-').pop();
 const ASSETS = [
   './', './index.html', './style.css', './manifest.webmanifest',
   './js/version.js', './js/boot.js', './js/game.js', './js/ai.js', './js/terrain.js', './js/input.js', './js/avatars.js', './js/emoji.js', './js/fx.js', './js/net.js', './js/main.js', './js/mp.js', './js/vendor/peerjs.min.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-192.png', './icons/maskable-512.png'
 ];
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()));
@@ -18,9 +19,15 @@ self.addEventListener('fetch', e => {
       let done = false;
       const fromCache = () => caches.match('./index.html', { ignoreVary: true }).then(h => { if (!done && h) { done = true; res(h); } return h; });
       const t = setTimeout(fromCache, 3000);
-      fetch(e.request).then(r => { clearTimeout(t); if (!done) { done = true; res(r); } })
+      fetch(e.request, { cache: 'no-store' }).then(r => { clearTimeout(t); if (!done) { done = true; res(r); } })
         .catch(() => { clearTimeout(t); fromCache().then(h => { if (!done) { done = true; res(h || Response.error()); } }); });
     }));
+    return;
+  }
+  // index.html מבקש קבצים עם ?v=<מזהה פריסה>. מזהה אחר מזה של ה-SW הזה => קודם רשת (גרסה חדשה לפני שה-SW התעדכן)
+  const v = new URL(e.request.url).searchParams.get('v');
+  if (v && v !== STAMP) {
+    e.respondWith(fetch(e.request, { cache: 'no-store' }).catch(() => caches.match(e.request, { ignoreSearch: true, ignoreVary: true })));
     return;
   }
   e.respondWith(

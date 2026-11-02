@@ -169,3 +169,6 @@ html.safe .card>*{margin:6px 0}
 #lobbyMsg{font-size:11px;margin:0;line-height:1.2}#lobbyMsg:empty{display:none}
 @media (max-height:700px) and (orientation:portrait){#shareLink{display:none}}
 @media (max-height:700px) and (orientation:portrait){#lobbyPlayers li{padding:0 8px 0 4px;margin:0}#lobbyPlayers .emo-s{font-size:15px}}
+.diagbox{position:fixed;left:6px;right:6px;bottom:6px;z-index:9998;background:rgba(255,255,255,.94);border:1px solid #d8dee9;border-radius:10px;padding:6px 8px;font-size:12px;color:#4c566a}
+.diagbox pre{direction:ltr;text-align:left;font-size:10px;white-space:pre-wrap;word-break:break-all;margin:4px 0 0}
+.updtoast{position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:9997;font-size:13px;padding:6px 12px;border-radius:999px;border:0;background:#5e81ac;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.2)}

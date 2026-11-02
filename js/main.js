@@ -632,7 +632,21 @@
 
   // ---------- Service Worker (עבודה בלי אינטרנט) ----------
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    // עדכונים: בדיקה בכל פתיחה/חזרה לאפליקציה; כשגרסה חדשה משתלטת – רענון אוטומטי בתפריט, או הודעה קטנה באמצע משחק
+    var hadCtrl = !!navigator.serviceWorker.controller, swReg = null;
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { swReg = r; try { r.update(); } catch (e) {} }, function () {});
+    });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && swReg) try { swReg.update(); } catch (e) {} });
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadCtrl) { hadCtrl = true; return; }                       // התקנה ראשונה – אין מה לרענן
+      var last = +(sessionStorage.getItem('ev.reloadAt') || 0);
+      if (Date.now() - last < 15000) return;                          // הגנה מלולאת רענונים
+      function go() { try { sessionStorage.setItem('ev.reloadAt', String(Date.now())); } catch (e) {} location.reload(); }
+      var busy = state === 'play' || state === 'paused' || state === 'dying' || mode !== 'solo' || (window.__koveshNet && window.__koveshNet.role);
+      if (!busy) return go();
+      var t = $('updToast'); t.classList.remove('hidden'); t.onclick = go;
+    });
   }
 
   // ממשק למודול הרשת (js/mp.js)

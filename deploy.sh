@@ -16,6 +16,9 @@ if [[ " $* " != *" --no-bump "* ]]; then APP="${APP%.*}.$(( ${APP#*.} + 1 ))"; f
 sed -i "s/app: 'v[0-9.]*', build: '[^']*'/app: 'v${APP}', build: 'emojiverse-${STAMP}'/" js/version.js
 grep -q "v${APP}', build: 'emojiverse-${STAMP}'" js/version.js || { echo "עדכון גרסת האפליקציה נכשל"; exit 1; }
 sed -i "s/const VERSION = '[a-z]*-[^']*'/const VERSION = 'emojiverse-${STAMP}'/" sw.js
+# מספר פריסה על כל קובץ JS/CSS ב-index.html – index חדש מושך קבצים חדשים גם מ-SW ישן
+sed -i -E "s#(src=\"js/[a-z]+\.js)(\?v=[0-9]+)?\"#\1?v=${STAMP}\"#g; s#(href=\"style\.css)(\?v=[0-9]+)?\"#\1?v=${STAMP}\"#" index.html
+grep -q "version.js?v=${STAMP}" index.html || { echo "הטבעת ?v נכשלה"; exit 1; }
 grep -q "emojiverse-${STAMP}" sw.js || { echo "עדכון גרסת המטמון נכשל"; exit 1; }
 git add -A
 git -c user.name="maoralfi-cpu" -c user.email="maoralfi-cpu@users.noreply.github.com" commit -qm "פריסה v${APP} (emojiverse-${STAMP})" || true
