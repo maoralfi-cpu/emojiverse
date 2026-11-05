@@ -226,7 +226,7 @@ console.log('ראש בראש');
   ok(c.alive && !d.alive && c.kills === 1, 'מי שבתוך השטח שלו שורד');
 }
 
-// מימוש ייחוס נאיבי לכלל הטורוס: רכיבי קשירות (4 שכנים, עוטף) של התאים הזרים; הגדול נשאר
+// מימוש ייחוס נאיבי לכלל הטורוס v9.6: רכיבי קשירות; כל הרכיבים בגודל המקסימלי נשארים (תיקו)
 function reference(owner, G, id) {
   const comp = new Int32Array(G * G).fill(-1), sizes = [];
   for (let s0 = 0; s0 < G * G; s0++) {
@@ -237,8 +237,13 @@ function reference(owner, G, id) {
         const j = ((ny + G) % G) * G + (nx + G) % G; if (owner[j] !== id && comp[j] < 0) { comp[j] = c; st.push(j); } } }
     sizes.push(n);
   }
-  let big = 0; for (let c = 1; c < sizes.length; c++) if (sizes[c] > sizes[big]) big = c;
-  const out = new Uint8Array(G * G); for (let k = 0; k < G * G; k++) out[k] = owner[k] === id || (sizes.length > 1 && comp[k] !== big) ? 1 : 0; return out;
+  let maxSz = 0; for (let c = 0; c < sizes.length; c++) if (sizes[c] > maxSz) maxSz = sizes[c];
+  const out = new Uint8Array(G * G);
+  for (let k = 0; k < G * G; k++) {
+    if (owner[k] === id) { out[k] = 1; continue; }
+    out[k] = sizes.length > 1 && sizes[comp[k]] < maxSz ? 1 : 0;
+  }
+  return out;
 }
 console.log('השוואה למימוש ייחוס – 400 מסלולים אקראיים');
 {
@@ -339,16 +344,16 @@ function frozen(p) { p.speed = 0; }
   ok(a.alive && !a.trail.length, 'וחזרה אליו סוגרת לולאה כרגיל');
 }
 
-console.log('v8: נכלא בתוך לולאה');
-{ // ראש בתוך הלולאה, ויש לו שטח במקום אחר => נפסל, נזקף לכובש
+console.log('v8/v9.6: נכלא בתוך לולאה');
+{ // v9.6: ראש בתוך החור מונע מילוי – היריב חי (חריגת ראש). השטח המרוחק נשאר.
   const g = new Game({ size: 80, rand: seeded(61) });
   const a = g.addPlayer({}), b = g.addPlayer({});
   g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 60, y: 60 });
+  const beforeB = g.counts[b.id];
   const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); if (b.alive) { b.x = b.px = 28; b.y = b.py = 25; b.trail = []; b.h = b.target = 0; } } };
-  let ev = null; const ostep = g.step.bind(g); g.step = () => { ostep(); for (const e of g.events) if (e.type === 'death' && e.victim === b) ev = e; g.events.length = 0; };
   goA(R, 14); goA(D, 10); goA(L, 14); goA(U, 8);
-  ok(a.alive && !b.alive && ev && ev.reason === 'enclosed' && ev.killer === a && a.kills === 1, 'נכלא (עם שטח במקום אחר): נפסל, נזקף לכובש');
-  ok(g.counts[b.id] === 0, 'השטח שנשאר לו במקום אחר נמחק');
+  ok(a.alive && b.alive && a.kills === 0, 'v9.6: ראש בחור – לא נכלא (החור לא מתמלא)');
+  ok(g.counts[b.id] === beforeB && !own(g, a, 28, 25), 'החור נשאר פתוח ושטח B במקום אחר נשמר');
 }
 { // מחוץ ללולאה – לא נפגע
   const g = new Game({ size: 80, rand: seeded(62) });
@@ -358,13 +363,32 @@ console.log('v8: נכלא בתוך לולאה');
   goA(R, 14); goA(D, 10); goA(L, 14); goA(U, 8);
   ok(a.alive && b.alive && g.counts[b.id] > 0, 'מחוץ ללולאה – לא נפגע');
 }
-{ // ראש על התפר בתוך לולאה שחוצה את התפר
+{ // ראש על התפר בתוך לולאה שחוצה את התפר – גם כאן חריגת ראש שומרת
   const g = new Game({ size: 80, rand: seeded(63) });
   const a = g.addPlayer({}), b = g.addPlayer({});
   g.spawn(a, { x: 72, y: 20 }); g.spawn(b, { x: 40, y: 60 });
   const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); if (b.alive) { b.x = b.px = 0.1; b.y = b.py = 25; b.trail = []; } } };
   goA(R, 16); goA(D, 10); goA(L, 16); goA(U, 8);
-  ok(a.alive && !b.alive && a.kills === 1, 'ראש בדיוק על התפר בתוך הלולאה – נכלא');
+  ok(a.alive && b.alive && a.kills === 0, 'v9.6: ראש על התפר בחור – לא נכלא');
+}
+{ // v9.6: ראש על רצועת השובל עצמה – התא מוטבע, enclosed נפסל כרגיל
+  const g = new Game({ size: 80, rand: seeded(64) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 60, y: 60 });
+  // בונים ל-a טבעת ואז חותכים עם קו שעובר על ראש b
+  for (let i = 0; i < g.owner.length; i++) if (g.owner[i] === a.id) g.setOwner(i, 0);
+  function rect(g, id, x0, y0, x1, y1) { for (let y = y0; y < y1; y += g.CELL) for (let x = x0; x < x1; x += g.CELL) g.setOwner(g.cellAt(x + 0.01, y + 0.01), id); }
+  rect(g, a.id, 10, 10, 40, 40);
+  for (let y = 16; y < 34; y += g.CELL) for (let x = 16; x < 34; x += g.CELL) g.setOwner(g.cellAt(x + 0.01, y + 0.01), 0);
+  b.x = 25; b.y = 25; b.alive = true; b.trail = [];
+  a.x = 12; a.y = 25; a.alive = true;
+  const pts = []; for (let i = 0; i <= 40; i++) pts.push(12 + i * 0.65, 25);
+  a.trail = pts; a.x = pts[pts.length - 2]; a.y = pts[pts.length - 1];
+  let ev = null; const beforeEvents = g.events.length;
+  g.capture(a);
+  for (const e of g.events) if (e.type === 'death' && e.victim === b) ev = e;
+  ok(!b.alive && ev && ev.reason === 'enclosed' && ev.killer === a, 'ראש על השובל: נכלא כרגיל (enclosed)');
+  ok(g.counts[b.id] === 0, 'שטח B נמחק אחרי enclosed');
 }
 console.log('v8: הולדה בטוחה');
 {

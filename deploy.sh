@@ -10,6 +10,7 @@ node test/logic.test.js >/dev/null || { echo "בדיקות הלוגיקה נכש
 node test/net.test.js >/dev/null || { echo "בדיקות הרשת נכשלו – לא פורסים"; exit 1; }
 node test/fx.test.js >/dev/null || { echo "בדיקות האפקטים נכשלו – לא פורסים"; exit 1; }
 node test/packs.test.js >/dev/null || { echo "בדיקות החבילות נכשלו – לא פורסים"; exit 1; }
+node test/fill.test.js >/dev/null || { echo "בדיקות המילוי נכשלו – לא פורסים"; exit 1; }
 STAMP=$(date +%Y%m%d%H%M%S)
 # גרסת אפליקציה: מעלים את המספר המשני בכל פריסה (./deploy.sh --no-bump כדי לא להעלות)
 APP=$(sed -n "s/.*app: 'v\([0-9]*\.[0-9]*\)'.*/\1/p" js/version.js)

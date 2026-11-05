@@ -233,9 +233,12 @@
     return best;
   };
 
-  /* כיבוש על טורוס: אין "בחוץ". השובל מוטבע כשטח; אחר כך מחלקים את כל התאים שאינם של השחקן
-     לרכיבי קשירות (4 שכנים, עם עטיפה). הרכיב הגדול ביותר נשאר; כל השאר – נכבשים.
-     לולאה שמקיפה את הטורוס (לא כוויצה) לא מפרידה כלום => רכיב אחד => נכבש רק השובל עצמו. */
+  /* v9.6 כיבוש על טורוס (Qix): אין "בחוץ" מובטח. השובל מוטבע כשטח; אחר כך מחלקים את כל
+     התאים שאינם של השחקן לרכיבי קשירות (4 שכנים, עם עטיפה). כל רכיב בגודל המקסימלי נשאר
+     "חוץ" (בתיקו – כולם בחוץ); כל השאר מתמלאים. רכיב שיש בו ראש של יריב חי לא מתמלא
+     (נשאר חוץ-למעשה) – עדיפות לבחירה הבטוחה. לולאה היקפית אחת => רכיב אחד => רק השובל.
+     שני רצועות מצטלבות => רכיב אחד דרך העטיפה => בלי מילוי ובלי קפיצות. חור בסופגנייה
+     שנחצה בקו => שני רכיבים קטנים => שניהם מתמלאים. */
   P.capture = function (p) {
     var id = p.id, t = p.trail, C = this.CELL, G = this.G, k;
     var step = C * 0.5;
@@ -250,12 +253,22 @@
     p.trail = [];
     var comps = this.components(id);
     if (comps.count <= 1) { this.enclosed(p, heads); this.events.push({ type: 'capture', player: p, cells: 0 }); return 0; }
-    var big = 0; for (k = 1; k < comps.count; k++) if (comps.size[k] > comps.size[big]) big = k;
-    var owner = this.owner, mark = this._mark, base = comps.base, n = owner.length, gained = 0, victims = [], taken = 0, vc = {};
+    var maxSz = 0; for (k = 0; k < comps.count; k++) if (comps.size[k] > maxSz) maxSz = comps.size[k];
+    // v9.6: רכיב עם ראש יריב – לא ממלאים אותו (נשאר "חוץ")
+    var skip = new Uint8Array(comps.count);
+    var owner = this.owner, mark = this._mark, base = comps.base, n = owner.length;
+    for (k = 0; k < heads.length; k += 3) {
+      var hc = heads[k + 1];
+      if (owner[hc] === id) continue;                         // הראש על השובל/שטח שכבר שלנו – enclosed יטפל
+      var hcComp = mark[hc] - base;
+      if (hcComp >= 0 && hcComp < comps.count) skip[hcComp] = 1;
+    }
+    var gained = 0, victims = [], taken = 0, vc = {};
     var bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity, W = this.W;
     for (var j = 0; j < n; j++) {
       var c = mark[j] - base;
-      if (c < 0 || c === big || owner[j] === id) continue;
+      if (c < 0 || owner[j] === id) continue;
+      if (comps.size[c] >= maxSz || skip[c]) continue;         // חוץ / תיקו לגדול / ראש יריב
       var prev = owner[j];
       this.setOwner(j, id); gained++;
       // v9: תיבה תוחמת (פרושה ליד הכובש) ותאים שנלקחו מאחרים – לאפקטים
@@ -275,7 +288,9 @@
     this._capBox = null;
     return gained;
   };
-  /* v8: מי שהראש שלו נמצא בתא שהפך עכשיו לשל הכובש – נכלא ונפסל (גם אם יש לו שטח במקום אחר) */
+  /* v8: מי שהראש שלו נמצא בתא שהפך עכשיו לשל הכובש – נכלא ונפסל (גם אם יש לו שטח במקום אחר).
+     v9.6: רכיב עם ראש יריב לא מתמלא, ולכן enclosed לא יפעיל עליו – היריב "שומר" על החור.
+     אם הראש נמצא על תא שהשובל עצמו הטביע – התא כבר של הכובש, והיריב נכלא כרגיל. */
   P.enclosed = function (p, heads) {
     for (var k = 0; k < heads.length; k += 3) {
       var q = heads[k];
@@ -285,6 +300,7 @@
   /* רכיבי קשירות של התאים שאינם של id (4 שכנים, עוטף). mark[i] = base + מס' רכיב */
   P.components = function (id) {
     var G = this.G, owner = this.owner, n = owner.length, mark = this._mark, q = this._queue;
+    if (this._gen > 0x70000000) { mark.fill(0); this._gen = 0; }   // מניעת גלישת Int32 במשחקים ארוכים
     var base = this._gen + 1, count = 0, size = [];
     for (var s0 = 0; s0 < n; s0++) {
       if (owner[s0] === id || mark[s0] >= base) continue;
