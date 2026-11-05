@@ -314,7 +314,7 @@
     var roundMs = cfg.minutes * 60000;
     var g = Core.startMatch({ mode: 'host', size: size, roster: list, myId: 1, diff: cfg.diff, roundMs: roundMs });
     tracker = new Net.Tracker(g); inGame = true; lastRank = null;
-    humans.forEach(function (h) { if (h.conn) send(h.conn, { t: 'start', size: size, roster: roster(g), you: h.pid, roundMs: roundMs, diff: cfg.diff }); });
+    humans.forEach(function (h) { if (h.conn) send(h.conn, { t: 'start', size: size, roster: roster(g), you: h.pid, roundMs: roundMs, diff: cfg.diff, packs: Core.packs.publicList() }); });
     broadcast(Net.encodeSnap(g, tracker, roundMs, false));
   }
   function joinMidGame(h) {
@@ -323,7 +323,7 @@
     var p = Core.addMatchPlayer({ name: h.name, avatar: h.avatar, emoji: h.emoji && usedNow.indexOf(h.emoji) < 0 ? h.emoji : Emoji.randomFree(usedNow), color: Avatars.list[h.avatar].color, isBot: false }, true);
     h.pid = p.id;
     humans.forEach(function (o) { if (o.conn && o !== h) send(o.conn, { t: 'roster', roster: roster(g) }); });
-    send(h.conn, { t: 'start', size: g.W, roster: roster(g), you: h.pid, roundMs: Core.match.roundMs, diff: cfg.diff, mid: true });
+    send(h.conn, { t: 'start', size: g.W, roster: roster(g), you: h.pid, roundMs: Core.match.roundMs, diff: cfg.diff, mid: true, packs: Core.packs.publicList() });
     send(h.conn, Net.encodeSnap(g, new Net.Tracker(g), Core.match.msLeft, Core.state === 'paused'));
     if (Core.state === 'paused') send(h.conn, { t: 'pause', why: 'bg' });
     Core.feed(h.name + ' הצטרף/ה');
@@ -340,6 +340,12 @@
       if (ev.type === 'death') broadcast({ t: 'ev', k: 'death', v: ev.victim.id, by: ev.killer ? ev.killer.id : 0, r: ev.reason, b: ev.box ? ev.box.map(function (z) { return Math.round(z * 10) / 10; }) : null });
       // v9: כיבוש – תאים, תאים שנלקחו מאחרים, הקורבן העיקרי ותיבה תוחמת (לאפקט זהה אצל כולם)
       else if (ev.type === 'capture' && ev.cells > 0) broadcast({ t: 'ev', k: 'cap', p: ev.player.id, c: ev.cells, tk: ev.taken || 0, vi: ev.victim || 0, b: ev.box ? ev.box.map(function (z) { return Math.round(z * 10) / 10; }) : null });
+    },
+    // v9.5: חבילות – t:'pack' (לקוחות ישנים מתעלמים מטיפוס לא מוכר)
+    onPack: function (ev) {
+      if (ev.type === 'spawn') broadcast({ t: 'pack', a: 'spawn', id: ev.pack.id, x: Math.round(ev.pack.x * 100) / 100, y: Math.round(ev.pack.y * 100) / 100 });
+      else if (ev.type === 'pick') broadcast({ t: 'pack', a: 'pick', id: ev.packId, pid: ev.playerId, e: ev.effectId });
+      else if (ev.type === 'end') broadcast({ t: 'pack', a: 'end', pid: ev.playerId });
     },
     roundOver: function () {
       var g = Core.game; lastRank = Net.ranking(g);
@@ -469,6 +475,11 @@
       throttle = new Net.InputThrottle(function (a) { send(conn, 'i' + a.toFixed(3)); }, 33, 0.01);
       Core.startMatch({ mode: 'client', size: m.size, roster: m.roster, myId: m.you, diff: m.diff, roundMs: m.roundMs });
       m.roster.forEach(function (r, i) { if (r.gone) Core.game.players[i].gone = true; });
+      if (m.packs) Core.onPackNet({ a: 'sync', list: m.packs });
+    }
+    else if (m.t === 'pack') {
+      // לקוחות ישנים בלי הטיפול הזה מתעלמים (לא מגיעים לכאן בכלל אם אין ענף) – כאן רק v9.5+
+      if (Core.mode === 'client') Core.onPackNet(m);
     }
     else if (m.t === 'roster') {
       var g = Core.game; if (!g) return;

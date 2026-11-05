@@ -94,7 +94,7 @@
     var p = {
       id: id, name: info.name || ('P' + id), isBot: !!info.isBot, avatar: info.avatar || 0, emoji: info.emoji || '🙂', color: info.color || '#888',
       x: 0, y: 0, px: 0, py: 0, h: 0, ph: 0, target: 0, turnInput: 0,
-      trail: [], tb: [0, 0, 0, 0], alive: false, kills: 0, bestPct: 0, respawnAt: 0, ai: null, deaths: 0, homeX: 0, homeY: 0
+      trail: [], tb: [0, 0, 0, 0], alive: false, kills: 0, bestPct: 0, respawnAt: 0, ai: null, deaths: 0, homeX: 0, homeY: 0, speedMul: 1
     };
     this.players.push(p);
     return p;
@@ -317,8 +317,9 @@
       if (d > maxTurn) d = maxTurn; else if (d < -maxTurn) d = -maxTurn;
       p.h += d;
       if (p.h > Math.PI) p.h -= TAU; else if (p.h < -Math.PI) p.h += TAU;
-      p.x += Math.cos(p.h) * v; p.y += Math.sin(p.h) * v;
-      p.ux = p.px + Math.cos(p.h) * v; p.uy = p.py + Math.sin(p.h) * v;   // סוף מקטע התנועה, לא עטוף
+      var sv = v * (p.speedMul || 1);   // v9.5: חבילות הפתעה – האצה/האטה
+      p.x += Math.cos(p.h) * sv; p.y += Math.sin(p.h) * sv;
+      p.ux = p.px + Math.cos(p.h) * sv; p.uy = p.py + Math.sin(p.h) * sv;   // סוף מקטע התנועה, לא עטוף
       p.x = mod(p.x, this.W); p.y = mod(p.y, this.W);                       // עטיפה: אין קיר
       p.dead = null;
       moving.push(p);

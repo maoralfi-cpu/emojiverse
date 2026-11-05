@@ -34,6 +34,7 @@
   var mm = null, mmCtx = null, mmImg = null, mmData = null, mmDirty = false;
   var rgb = [], trailCss = [], darkCss = [], fillCss = [], lineCss = [];
   var camX = 0, camY = 0, effects = [], avatarURLs = [], lastBoardKey = '', startBest = { pct: 0, kills: 0 }, keysHeld = {};
+  var packs = new Packs();   // v9.5 חבילות הפתעה
 
   // ---------- תפריט ----------
   function seg(id, key, parse) {
@@ -166,13 +167,22 @@
     paths = [];
     setupMinimap();
     effects = []; FX.clear(); camX = me.x; camY = me.y; layer = null;
+    packs.reset();
+    clearPackVisual();
     $('hudAvatar').src = avatarURLs[me.id];
     $('feed').innerHTML = ''; lastBoardKey = '';
     $('minimap').classList.toggle('hidden', !S.mini);
+    var pfx = $('packFx'); if (pfx) pfx.classList.add('hidden');
     resize();
     show(null); $('hud').classList.remove('hidden');
     joySetup(); keysHeld = {};
     state = 'play'; acc = 0; lastFrame = 0;
+    // סולו/מארח: זורעים חבילה-שתיים בהתחלה
+    if (mode !== 'client') {
+      var n0 = Math.min(Packs.maxFor(g.W), 2);
+      for (var i = 0; i < n0; i++) packs.spawnOne(g);
+      packs.events.length = 0;
+    }
     updateHud(true);
     startLoop();
   }
@@ -288,6 +298,11 @@
     g.step();
     for (var e = 0; e < g.events.length; e++) handleEvent(g.events[e]);
     g.events.length = 0;
+    // v9.5: חבילות הפתעה (מארח/סולו)
+    if (mode !== 'client') {
+      var pev = packs.tick(g);
+      for (var pi = 0; pi < pev.length; pi++) handlePackEvent(pev[pi]);
+    }
     for (k = 0; k < ps.length; k++) {
       var p = ps[k];
       if (!p.alive && !p.gone && (p.isBot || mode === 'host')) {
@@ -333,6 +348,59 @@
     setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 2500);
   }
 
+  /* v9.5: חבילות הפתעה – טוסט, ספירה לאחור, אפקטים חזותיים מקומיים */
+  function handlePackEvent(ev) {
+    if (mode === 'host' && MPH && MPH.onPack) MPH.onPack(ev);
+    if (ev.type === 'pick') {
+      var fx = Packs.effect(ev.effectId), who = g.players[ev.playerId - 1];
+      if (who === me && fx) showPackPickup(fx);
+    } else if (ev.type === 'end' && +ev.playerId === me.id) {
+      clearPackVisual();
+      var pfx = $('packFx'); if (pfx) pfx.classList.add('hidden');
+    }
+  }
+  function showPackPickup(fx) {
+    feed(fx.emoji + ' ' + fx.name);
+    applyPackVisual(fx);
+    var el = $('packFx'); if (!el) return;
+    el.classList.remove('hidden');
+    $('packFxIcon').textContent = fx.emoji;
+    $('packFxName').textContent = fx.name;
+    updatePackHud();
+  }
+  function applyPackVisual(fx) {
+    clearPackVisual();
+    if (!fx) return;
+    if (fx.visual === 'invert') canvas.style.filter = 'invert(1) hue-rotate(180deg)';
+    // wide מטופל ב-updateZoom
+  }
+  function clearPackVisual() {
+    canvas.style.filter = '';
+  }
+  function updatePackHud() {
+    var a = packs.activeOf(me && me.id);
+    var el = $('packFx');
+    if (!el) return;
+    if (!a) { el.classList.add('hidden'); clearPackVisual(); return; }
+    var fx = Packs.effect(a.effectId);
+    var sec = Math.ceil(packs.remaining(me.id, g.tickNo, g.DT));
+    $('packFxIcon').textContent = fx ? fx.emoji : '🎁';
+    $('packFxName').textContent = fx ? fx.name : '';
+    $('packFxSec').textContent = sec + ' שנ\'';
+    el.classList.remove('hidden');
+  }
+  function onPackNet(ev) {
+    // אירועי רשת מהמארח (לקוח)
+    if (ev.a === 'spawn') packs.clientSpawn(ev.id, ev.x, ev.y);
+    else if (ev.a === 'pick') {
+      var fx = packs.clientPick(g, ev.id, ev.pid, ev.e);
+      if (ev.pid === me.id && fx) showPackPickup(fx);
+    } else if (ev.a === 'end') {
+      packs.clientEnd(g, ev.pid);
+      if (ev.pid === me.id) { clearPackVisual(); var pfx = $('packFx'); if (pfx) pfx.classList.add('hidden'); }
+    } else if (ev.a === 'sync') packs.applySync(ev.list || []);
+  }
+
   // ---------- ציור ----------
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, S.dpr || 2);
@@ -350,6 +418,9 @@
   function updateZoom(dtMs) {
     var pct = me && g ? g.pct(me) : 0, f = Math.min(1, Math.floor(pct / 5) * 5 / 40);
     var target = VIEW_DIAG_MIN + (VIEW_DIAG_MAX - VIEW_DIAG_MIN) * f;
+    // v9.5: שדה ראייה רחב – זום החוצה זמני לאוסף בלבד
+    var a = me && packs.activeOf(me.id), fx = a && Packs.effect(a.effectId);
+    if (fx && fx.visual === 'wide') target += 18;
     viewDiag = dtMs ? viewDiag + (target - viewDiag) * Math.min(1, dtMs / 400) : target;
     var px = Math.max(12, Math.hypot(W, H) / viewDiag) * DPR;
     if (Math.abs(px - unitPx) > 0.03 * unitPx || (!dtMs && px !== unitPx)) { unitPx = px; layer = null; } // מדרגות של 3% – פחות ציורים מחדש של השכבה
@@ -409,9 +480,10 @@
     frames++;
     var cw = canvas.width, ch = canvas.height;
     // מיקום מוצג: מהמצב האחרון קדימה לפי הכיוון העדכני ביותר (כולל קלט שהגיע אחרי הצעד האחרון)
-    var ps = g.players, k, p, maxTurn = g.TURN * g.DT, step = g.SPEED * g.DT;
+    var ps = g.players, k, p, maxTurn = g.TURN * g.DT, baseStep = g.SPEED * g.DT;
     for (k = 0; k < ps.length; k++) {
       p = ps[k]; if (!p.alive) continue;
+      var step = baseStep * (p.speedMul || 1);
       var dh = Game.angDiff(p.target, p.h); if (dh > maxTurn) dh = maxTurn; else if (dh < -maxTurn) dh = -maxTurn;
       p.rh = p.h + dh * alpha;
       p.rx = p.x + Math.cos(p.rh) * step * alpha; p.ry = p.y + Math.sin(p.rh) * step * alpha;
@@ -463,6 +535,24 @@
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
+    // v9.5: חבילות הפתעה – אימוג'י 🎁 עם פעימה זולה (לא במפה הקטנה)
+    if (packs.packs.length) {
+      var pulse = 1 + 0.08 * Math.sin((now || 0) / 220);
+      var psz = Math.round(unitPx * 1.55 * pulse);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = psz + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+      for (k = 0; k < packs.packs.length; k++) {
+        var pk = packs.packs[k];
+        var pwx = camX + g.wd(pk.x - camX), pwy = camY + g.wd(pk.y - camY), ppad = 2;
+        var pxo = images(pwx - ppad, pwx + ppad, vx0, vx0 + vw), pyo = images(pwy - ppad, pwy + ppad, vy0, vy0 + vh);
+        for (var pa = 0; pa < pyo.length; pa++) for (var pb = 0; pb < pxo.length; pb++) {
+          var phx = (pwx + pxo[pb] - vx0) * unitPx, phy = (pwy + pyo[pa] - vy0) * unitPx;
+          if (phx < -40 || phy < -40 || phx > cw + 40 || phy > ch + 40) continue;
+          ctx.fillText(Packs.ICON, phx, phy);
+        }
+      }
+    }
+
     // דמויות
     var size = Math.round(unitPx * 1.9);
     var fontPx = Math.round(Math.max(11 * DPR, unitPx * 0.5));
@@ -491,6 +581,7 @@
     if (match) { var sec = Math.ceil((match.msLeft || 0) / 1000); $('timer').textContent = Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2); }
     $('pct').textContent = g.pct(me).toFixed(1) + '%';
     $('kills').textContent = '⚔️ ' + me.kills;
+    updatePackHud();
     var list = g.players.filter(function (p) { return p.alive && !p.gone; }).sort(function (a, b) { return g.counts[b.id] - g.counts[a.id]; }).slice(0, 5);
     if (me.alive && list.indexOf(me) < 0) list.push(me);
     var key = list.map(function (p) { return p.id + ':' + g.pct(p).toFixed(1); }).join(',');
@@ -538,6 +629,7 @@
     if (mode === 'host' && MPH) MPH.onResume();
   }
   function toMenu() {
+    clearPackVisual(); packs.reset();
     if (mode !== 'solo' && MPH) MPH.leave();
     mode = 'solo'; match = null; $('timer').classList.add('hidden');
     state = 'menu'; stopLoop(); g = null;
@@ -546,6 +638,7 @@
     showBest(); show('menu');
   }
   function gameOver(ev) {
+    clearPackVisual(); packs.reset();
     state = 'dying';
     if (S.vib && navigator.vibrate) try { navigator.vibrate(180); } catch (e) {}
     var kills = me.kills, best = me.bestPct;
@@ -659,9 +752,10 @@
     myDeath: myDeath, nm: nm, stopLoop: stopLoop, startLoop: function () { if (state === 'play') startLoop(); },
     setState: function (st) { state = st; }, resize: resize,
     get game() { return g; }, get me() { return me; }, get state() { return state; }, get mode() { return mode; }, get match() { return match; },
+    get packs() { return packs; }, onPackNet: onPackNet, clearPackVisual: clearPackVisual,
     TICK_MS: TICK_MS
   };
   // חשיפה לבדיקות אוטומטיות בלבד
   window.__evBooted = true;
-  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
+  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get packs() { return packs; }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
 })();

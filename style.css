@@ -45,6 +45,7 @@ button:active{transform:scale(.97)}
 #minimap{position:absolute;bottom:12px;left:12px;width:110px;height:110px;border-radius:10px;background:rgba(236,239,244,.9);border:2px solid rgba(76,86,106,.25)}
 #feed{position:absolute;top:72px;right:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
 #feed div{background:rgba(251,252,254,.9);color:#3b4252;border:1px solid rgba(76,86,106,.15);padding:4px 10px;border-radius:10px;font-size:14px}
+#packFx{position:absolute;bottom:14px;right:12px;display:flex;align-items:center;gap:6px;background:rgba(251,252,254,.92);color:#3b4252;border:1px solid rgba(76,86,106,.2);border-radius:14px;padding:6px 12px;font-size:14px;font-weight:700}#packFx #packFxSec{font-variant-numeric:tabular-nums;color:#5e81ac;margin-inline-start:4px}
 #joyBase{position:fixed;width:130px;height:130px;border-radius:50%;background:rgba(76,86,106,.08);border:2px solid rgba(76,86,106,.35);z-index:6;opacity:.55;pointer-events:none;transform:translate(-50%,-50%)}
 #joyKnob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:rgba(94,129,172,.75)}
 @media (max-height:500px){.card{padding:12px}h1{font-size:34px}#avatarPick{grid-template-columns:repeat(8,1fr)}}
