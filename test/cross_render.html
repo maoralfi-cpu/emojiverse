@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html><body>
+<canvas id="c" width="400" height="400"></canvas>
+<script src="../js/game.js"></script>
+<script src="../js/terrain.js"></script>
+<script>
+window.__result = null;
+(function(){
+  function seeded(s){return function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
+  function rect(g,id,x0,y0,x1,y1){for(var y=y0;y<y1;y+=g.CELL)for(var x=x0;x<x1;x+=g.CELL)g.setOwner(g.cellAt(x+0.01,y+0.01),id);}
+  var g=new Game({size:40,rand:seeded(1)});
+  var me=g.addPlayer({}), bot=g.addPlayer({});
+  g.spawn(me,{x:20,y:20}); g.spawn(bot,{x:5,y:5});
+  for(var i=0;i<g.owner.length;i++) if(g.owner[i]===me.id) g.setOwner(i,0);
+  rect(g,me.id,19,0,21,40);
+  rect(g,me.id,0,19,40,21);
+  rect(g,bot.id,2,2,10,10);
+  var loops=Terrain.contours(g.owner,g.G,g.CELL,me.id);
+  var path=Terrain.toPath(loops);
+  var info={nLoops:loops.length, D:loops.map(function(L){return L.D;}), me:g.counts[me.id], bot:g.counts[bot.id], n:g.owner.length};
+
+  var cv=document.getElementById('c');
+  var ctx=cv.getContext('2d',{alpha:false});
+  // world [0,40) -> canvas 400x400 => 10 px per unit
+  var S=10;
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,400,400);
+  ctx.save();
+  ctx.scale(S,S);
+  // draw me territory like main.js (evenodd), one tile
+  ctx.fillStyle='#c4a8e8'; // purple-ish
+  ctx.fill(path.fill,'evenodd');
+  ctx.restore();
+
+  // sample pixels vs grid at test points
+  var samples=[[5,5],[5,20],[20,5],[20,20],[35,35],[10,10],[30,30],[5,35],[35,5]];
+  var cmp=[];
+  for(var s=0;s<samples.length;s++){
+    var x=samples[s][0], y=samples[s][1];
+    var owner=g.ownerAt(x,y);
+    var px=Math.floor(x*S+S/2), py=Math.floor(y*S+S/2);
+    var d=ctx.getImageData(px,py,1,1).data;
+    var isPurple=d[0]>150 && d[2]>180 && d[1]>140; // rough
+    var isWhite=d[0]>250 && d[1]>250 && d[2]>250;
+    cmp.push({x:x,y:y,owner:owner,rgb:[d[0],d[1],d[2]], expectMe:owner===me.id, paintedMe:isPurple, paintedWhite:isWhite});
+  }
+  // count purple pixels vs expected me cells (coarse)
+  var img=ctx.getImageData(0,0,400,400).data;
+  var purple=0, white=0;
+  for(var p=0;p<img.length;p+=4){
+    if(img[p]>250&&img[p+1]>250&&img[p+2]>250) white++;
+    else if(img[p]>140&&img[p+2]>160) purple++;
+  }
+  info.purplePx=purple; info.whitePx=white; info.cmp=cmp;
+  // also try nonzero fill for comparison
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,400,400);
+  ctx.save(); ctx.scale(S,S);
+  ctx.fillStyle='#c4a8e8';
+  try{ ctx.fill(path.fill,'nonzero'); }catch(e){ ctx.fill(path.fill); }
+  ctx.restore();
+  var img2=ctx.getImageData(0,0,400,400).data; var purple2=0;
+  for(var p=0;p<img2.length;p+=4) if(img2[p]>140&&img2[p+2]>160) purple2++;
+  info.purpleNonzero=purple2;
+  window.__result=info;
+})();
+</script></body></html>

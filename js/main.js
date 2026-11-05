@@ -236,7 +236,7 @@
     for (var id = 1; id <= g.players.length; id++) {
       if (!g.dirtyOwners[id]) continue;
       g.dirtyOwners[id] = 0; changed = true;
-      paths[id] = g.counts[id] > 0 ? Terrain.toPath(Terrain.contours(g.owner, g.G, g.CELL, id)) : null;
+      paths[id] = g.counts[id] > 0 ? Terrain.build(g.owner, g.G, g.CELL, id) : null;
     }
     if (g.dirtyCells.length) {
       for (var k = 0; k < g.dirtyCells.length; k++) mmPaint(g.dirtyCells[k]);

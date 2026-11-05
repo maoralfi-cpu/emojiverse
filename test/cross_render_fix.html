@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html><body><canvas id="c" width="400" height="400"></canvas>
+<script src="../js/game.js"></script>
+<script src="../js/terrain.js"></script>
+<script>
+window.__err=null;
+window.onerror=function(m,s,l,c,e){window.__err=String(m)+' @'+l; window.__result={error:window.__err};};
+(function(){
+  function rect(g,id,x0,y0,x1,y1){for(var y=y0;y<y1;y+=g.CELL)for(var x=x0;x<x1;x+=g.CELL)g.setOwner(g.cellAt(x+.01,y+.01),id);}
+  function isPurple(ctx,x,y,S){var d=ctx.getImageData(Math.floor(x*S+S/2),Math.floor(y*S+S/2),1,1).data; return d[0]>150&&d[2]>180&&d[1]>140;}
+
+  var g=new Game({size:40});
+  var me=g.addPlayer({}), bot=g.addPlayer({});
+  g.spawn(me,{x:20,y:20}); g.spawn(bot,{x:5,y:5});
+  for(var i=0;i<g.owner.length;i++) if(g.owner[i]===me.id) g.setOwner(i,0);
+  rect(g,me.id,19,0,21,40); rect(g,me.id,0,19,40,21); rect(g,bot.id,2,2,10,10);
+
+  var loops=Terrain.contours(g.owner,g.G,g.CELL,me.id);
+  var path=Terrain.build(g.owner,g.G,g.CELL,me.id);
+  var cv=document.getElementById('c'); var ctx=cv.getContext('2d',{alpha:false});
+  var S=10;
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,400,400);
+  ctx.save(); ctx.scale(S,S);
+  ctx.fillStyle='#c4a8e8'; ctx.fill(path.fill,'evenodd');
+  ctx.restore();
+
+  var pts=[[5,5],[5,20],[20,5],[20,20],[10,10],[30,30],[35,35]];
+  var cmp=[]; var ok=true;
+  for(var k=0;k<pts.length;k++){
+    var x=pts[k][0], y=pts[k][1], owner=g.ownerAt(x,y), purp=isPurple(ctx,x,y,S);
+    cmp.push({x:x,y:y,owner:owner,purple:purp});
+    if((owner===me.id)!==purp) ok=false;
+  }
+  var c2=document.createElement('canvas').getContext('2d');
+  var inCenter=c2.isPointInPath(path.fill,20.25,20.25,'evenodd');
+  var inHole=c2.isPointInPath(path.fill,10,10,'evenodd');
+
+  // blob
+  var g2=new Game({size:40}); var p=g2.addPlayer({}); g2.spawn(p,{x:20,y:20});
+  rect(g2,p.id,15,15,25,25);
+  var path2=Terrain.build(g2.owner,g2.G,g2.CELL,p.id);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,400,400);
+  ctx.save(); ctx.scale(S,S); ctx.fillStyle='#c4a8e8'; ctx.fill(path2.fill,'evenodd'); ctx.restore();
+  var blobOk=isPurple(ctx,20,20,S) && !isPurple(ctx,5,5,S) && isPurple(ctx,17,17,S);
+
+  // vertical band
+  var g3=new Game({size:40}); var q=g3.addPlayer({}); g3.spawn(q,{x:20,y:20});
+  for(i=0;i<g3.owner.length;i++) if(g3.owner[i]===q.id) g3.setOwner(i,0);
+  rect(g3,q.id,19,0,21,40);
+  var path3=Terrain.build(g3.owner,g3.G,g3.CELL,q.id);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,400,400);
+  ctx.save(); ctx.scale(S,S); ctx.fillStyle='#c4a8e8'; ctx.fill(path3.fill,'evenodd'); ctx.restore();
+  var bandOk=isPurple(ctx,20,10,S) && isPurple(ctx,20,30,S) && !isPurple(ctx,5,5,S) && !isPurple(ctx,30,20,S);
+
+  window.__result={
+    ok:ok, cmp:cmp, rawInside:Terrain.pointInLoops(loops,20.25,20.25),
+    inCenter:inCenter, inHole:inHole, blobOk:blobOk, bandOk:bandOk,
+    nLoops:loops.length
+  };
+})();
+</script></body></html>

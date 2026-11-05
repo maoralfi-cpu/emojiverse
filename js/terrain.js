@@ -3,7 +3,9 @@
    v7 (טורוס): הדגימה עוטפת. לכל ציר מחפשים את הפער הריק הגדול ביותר (מעגלית) ומתחילים אחריו,
    כך ששטח שחוצה תפר מקבל קואורדינטות רציפות (למשל x=-3..5). אם השטח פרוש על כל הציר – הציר
    מחושב מעגלית, והלולאות "נפרשות" בזמן החיבור. לולאה שלא נסגרת אחרי פרישה (מקיפה את הטורוס)
-   מסומנת ב-D (ההיסט, כפולה של W) ומצוירת כרצועה. */
+   מסומנת ב-D (ההיסט, כפולה של W) ומצוירת כרצועה.
+   v9.7: שטח שפרוש על שני הצירים (צלב וכו') נותן לולאה שפנים ה-evenodd שלה הפוך מהבעלות;
+   Terrain.build בודק נקודות שטח ומוסיף מלבן-משלים ל-fill במידת הצורך. */
 (function (root) {
   'use strict';
   var bufA = null, bufB = null;
@@ -33,20 +35,35 @@
     if (!rx) return [];
     // תחום קודקודים (עם שוליים להחלקה); ציר שהשטח כמעט ממלא – מעגלי
     var cycX = rx[1] + 6 >= G, cycY = ry[1] + 6 >= G;
-    var vx0 = cycX ? 0 : rx[0] - 2, vy0 = cycY ? 0 : ry[0] - 2;
-    var VW = cycX ? G : rx[1] + 5, VH = cycY ? G : ry[1] + 5, n = VW * VH;
+    /* v9.7: פרוש על שני הצירים (צלב וכו') – מסגרת ריקה סביב הרשת במקום MS מעגלי כפול,
+       כדי שהקונטור ייסגר סביב השטח האמיתי ולא סביב המשלים. */
+    var padded = null, Gp = G;
+    var vx0, vy0, VW, VH;
+    if (cycX && cycY) {
+      cycX = false; cycY = false;
+      Gp = G + 2; padded = new Uint8Array(Gp * Gp);
+      for (j = 0; j < G; j++) for (i = 0; i < G; i++) if (owner[j * G + i] === id) padded[(j + 1) * Gp + (i + 1)] = 1;
+      vx0 = -1; vy0 = -1; VW = Gp; VH = Gp;
+    } else {
+      vx0 = cycX ? 0 : rx[0] - 2; vy0 = cycY ? 0 : ry[0] - 2;
+      VW = cycX ? G : rx[1] + 5; VH = cycY ? G : ry[1] + 5;
+    }
+    var n = VW * VH;
     if (!bufA || bufA.length < n) { bufA = new Float32Array(n); bufB = new Float32Array(n); }
     var A = bufA, B = bufB;
-    // ערך קודקוד = ממוצע 4 התאים סביבו (דגימה עוטפת)
+    function cellOn(gx, gy) {
+      if (padded) {
+        var ii = gx + 1, jj = gy + 1;
+        return (ii >= 0 && jj >= 0 && ii < Gp && jj < Gp && padded[jj * Gp + ii]) ? 1 : 0;
+      }
+      return owner[md(gy, G) * G + md(gx, G)] === id ? 1 : 0;
+    }
+    // ערך קודקוד = ממוצע 4 התאים סביבו (דגימה עוטפת / מרופדת)
     for (j = 0; j < VH; j++) {
-      var gy = vy0 + j, r0 = md(gy - 1, G) * G, r1 = md(gy, G) * G;
+      var gy = vy0 + j;
       for (i = 0; i < VW; i++) {
-        var gx = vx0 + i, c0 = md(gx - 1, G), c1 = md(gx, G), s = 0;
-        if (owner[r0 + c0] === id) s++;
-        if (owner[r0 + c1] === id) s++;
-        if (owner[r1 + c0] === id) s++;
-        if (owner[r1 + c1] === id) s++;
-        A[j * VW + i] = s / 4;
+        var gx = vx0 + i;
+        A[j * VW + i] = (cellOn(gx - 1, gy - 1) + cellOn(gx, gy - 1) + cellOn(gx - 1, gy) + cellOn(gx, gy)) / 4;
       }
     }
     // החלקה 3x3 (מעגלית בציר מעגלי; מחוץ לתחום – אפס, כי שם אין שטח)
@@ -125,21 +142,57 @@
   }
   function wd(d, W) { d %= W; if (d > W / 2) d -= W; else if (d < -W / 2) d += W; return d; }
 
-  /* Path2D מוחלק (עקומות דרך נקודות האמצע). מחזיר {fill, stroke}.
-     לולאה רגילה – אותה צורה בשניהם. רצועה (D≠0) – משרשרים עותקים מוזזים של הגבול, וב-fill סוגרים
-     דרך נקודות רחוקות בצד קבוע (לפי כיוון D הקנוני), כך ש-evenodd בין שני גבולות הרצועה = הרצועה. */
-  function toPath(loops) {
+  /* האם (x,y) בתוך לולאות חוזיות (D=0) לפי evenodd / ray-casting. רצועות (D≠0) לא נספרות כאן. */
+  function pointInLoops(loops, x, y) {
+    var inside = false;
+    for (var l = 0; l < loops.length; l++) {
+      var L = loops[l], D = L.D || [0, 0];
+      if (D[0] || D[1]) continue;
+      var n = L.length / 2;
+      for (var i = 0, j = n - 1; i < n; j = i++) {
+        var yi = L[2 * i + 1], yj = L[2 * j + 1];
+        if ((yi > y) === (yj > y)) continue;
+        var xi = L[2 * i], xj = L[2 * j];
+        if (x < (xj - xi) * (y - yi) / (yj - yi + 0.0) + xi) inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  /* v9.7: כשהשטח פרוש על שני הצירים (צלב / טבעת עוטפת), marching squares המעגלי מחזיר
+     לולאה חוזית שפנים ה-evenodd שלה הוא המשלים – הצבעים מתהפכים. אם נקודת בדיקה בתוך
+     שטח בבעלות נופלת מחוץ ללולאות, מוסיפים מלבן ענק ל-fill (evenodd הופך את הפנים).
+     רצועות (D≠0) לא נוגעים – הלוגיקה של band כבר נכונה. */
+  function toPath(loops, insidePts) {
     var path = new Path2D(), stroke = null, k;
+    var hasBand = false;
     for (var l = 0; l < loops.length; l++) {
       var L = loops[l], n = L.length / 2, D = L.D || [0, 0];
       if (D[0] || D[1]) {
+        hasBand = true;
         if (!stroke) { stroke = new Path2D(); for (k = 0; k < l; k++) if (!(loops[k].D && (loops[k].D[0] || loops[k].D[1]))) addLoop(stroke, loops[k]); }
         band(path, stroke, L, D);
         continue;
       }
       addLoop(path, L); if (stroke) addLoop(stroke, L);
     }
+    if (!hasBand && insidePts && insidePts.length) {
+      var hits = 0;
+      for (k = 0; k < insidePts.length; k++) if (pointInLoops(loops, insidePts[k][0], insidePts[k][1])) hits++;
+      if (hits === 0) path.rect(-1e5, -1e5, 2e5, 2e5);   // evenodd complement
+    }
     return { fill: path, stroke: stroke || path };
+  }
+
+  /* בונה path מכוון לפי רשת הבעלות: דוגם עד 8 תאי שטח כ"פנים". */
+  function build(owner, G, C, id) {
+    var loops = contours(owner, G, C, id);
+    if (!loops.length) return null;
+    var pts = [], n = owner.length, step = Math.max(1, (n / 64) | 0);
+    for (var j = 0; j < n && pts.length < 8; j += step) if (owner[j] === id) {
+      pts.push([(j % G + 0.5) * C, (((j / G) | 0) + 0.5) * C]);
+    }
+    return toPath(loops, pts);
   }
   var COPIES = 3;
   function band(fill, stroke, L, D) {
@@ -171,7 +224,7 @@
     }
   }
 
-  var api = { contours: contours, toPath: toPath };
+  var api = { contours: contours, toPath: toPath, build: build, pointInLoops: pointInLoops };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Terrain = api;
 })(this);

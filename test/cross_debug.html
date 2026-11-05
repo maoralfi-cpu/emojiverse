@@ -1,0 +1,32 @@
+<!DOCTYPE html><body><canvas id="c" width="800" height="800"></canvas>
+<script src="../js/game.js"></script><script src="../js/terrain.js"></script>
+<script>
+(function(){
+  function rect(g,id,x0,y0,x1,y1){for(var y=y0;y<y1;y+=g.CELL)for(var x=x0;x<x1;x+=g.CELL)g.setOwner(g.cellAt(x+.01,y+.01),id);}
+  var g=new Game({size:40}); var me=g.addPlayer({});
+  g.spawn(me,{x:20,y:20});
+  for(var i=0;i<g.owner.length;i++) if(g.owner[i]===me.id) g.setOwner(i,0);
+  rect(g,me.id,19,0,21,40); rect(g,me.id,0,19,40,21);
+  var path=Terrain.build(g.owner,g.G,g.CELL,me.id);
+  var cv=document.getElementById('c'); var ctx=cv.getContext('2d',{alpha:false});
+  // 1 world unit = 10px, origin at canvas (200,200) so negative loop coords are visible
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,800,800);
+  ctx.setTransform(10,0,0,10,200,200);
+  ctx.fillStyle='#c4a8e8'; ctx.fill(path.fill,'evenodd');
+  function rgb(wx,wy){var d=ctx.getImageData(Math.round(wx*10+200),Math.round(wy*10+200),1,1).data; return [d[0],d[1],d[2]];}
+  var c2=document.createElement('canvas').getContext('2d');
+  window.__result={
+    rgb_center:rgb(20,20), rgb_arm:rgb(20,5), rgb_hole:rgb(10,10), rgb_neg:rgb(-5,-5),
+    pip_center:c2.isPointInPath(path.fill,20.25,20.25,'evenodd'),
+    pip_hole:c2.isPointInPath(path.fill,10,10,'evenodd'),
+    pip_arm:c2.isPointInPath(path.fill,20.25,5.25,'evenodd'),
+    // how many samples in [0,40)^2 match ownership
+    match:0, total:0
+  };
+  for(var y=0;y<40;y+=2) for(var x=0;x<40;x+=2){
+    var own=g.ownerAt(x+0.25,y+0.25)===me.id;
+    var pur=rgb(x+0.25,y+0.25)[0]<250;
+    window.__result.total++; if(own===pur) window.__result.match++;
+  }
+})();
+</script></body>

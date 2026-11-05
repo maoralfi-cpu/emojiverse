@@ -1,0 +1,46 @@
+<!DOCTYPE html><body><canvas id="c" width="400" height="400"></canvas>
+<script src="../js/game.js"></script><script src="../js/terrain.js"></script>
+<script>
+(function(){
+  function rect(g,id,x0,y0,x1,y1){for(var y=y0;y<y1;y+=g.CELL)for(var x=x0;x<x1;x+=g.CELL)g.setOwner(g.cellAt(x+.01,y+.01),id);}
+  function purple(ctx,x,y,S){var d=ctx.getImageData(Math.floor(x*S+S/2),Math.floor(y*S+S/2),1,1).data; return d[0]<250;}
+  var g=new Game({size:40}); var me=g.addPlayer({}), bot=g.addPlayer({});
+  g.spawn(me,{x:20,y:20}); g.spawn(bot,{x:5,y:5});
+  for(var i=0;i<g.owner.length;i++) if(g.owner[i]===me.id) g.setOwner(i,0);
+  rect(g,me.id,19,0,21,40); rect(g,me.id,0,19,40,21); rect(g,bot.id,2,2,10,10);
+  var path=Terrain.build(g.owner,g.G,g.CELL,me.id);
+  var ctx=document.getElementById('c').getContext('2d',{alpha:false}); var S=10;
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,400,400);
+  ctx.setTransform(S,0,0,S,0,0); ctx.fillStyle='#c4a8e8'; ctx.fill(path.fill,'evenodd');
+  var match=0,total=0,falsePos=0,falseNeg=0;
+  for(var y=0;y<40;y+=1) for(var x=0;x<40;x+=1){
+    var own=g.ownerAt(x+0.25,y+0.25)===me.id, pur=purple(ctx,x+0.25,y+0.25,S);
+    total++; if(own===pur) match++; else if(pur) falsePos++; else falseNeg++;
+  }
+  // blob
+  var g2=new Game({size:40}); var p=g2.addPlayer({}); g2.spawn(p,{x:20,y:20}); rect(g2,p.id,15,15,25,25);
+  var path2=Terrain.build(g2.owner,g2.G,g2.CELL,p.id);
+  ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle='#fff'; ctx.fillRect(0,0,400,400);
+  ctx.setTransform(S,0,0,S,0,0); ctx.fillStyle='#c4a8e8'; ctx.fill(path2.fill,'evenodd');
+  var blobOk=purple(ctx,20,20,S)&&!purple(ctx,5,5,S)&&purple(ctx,17,17,S);
+  // V band
+  var g3=new Game({size:40}); var q=g3.addPlayer({}); g3.spawn(q,{x:20,y:20});
+  for(i=0;i<g3.owner.length;i++) if(g3.owner[i]===q.id) g3.setOwner(i,0); rect(g3,q.id,19,0,21,40);
+  var path3=Terrain.build(g3.owner,g3.G,g3.CELL,q.id);
+  ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle='#fff'; ctx.fillRect(0,0,400,400);
+  ctx.setTransform(S,0,0,S,0,0); ctx.fillStyle='#c4a8e8'; ctx.fill(path3.fill,'evenodd');
+  var bandOk=purple(ctx,20,10,S)&&purple(ctx,20,30,S)&&!purple(ctx,5,5,S)&&!purple(ctx,30,20,S);
+  // cross + 1-cell gap strip
+  var g4=new Game({size:40}); var r=g4.addPlayer({}); g4.spawn(r,{x:20,y:20});
+  for(i=0;i<g4.owner.length;i++) if(g4.owner[i]===r.id) g4.setOwner(i,0);
+  rect(g4,r.id,19,0,21,40); rect(g4,r.id,0,19,40,21);
+  // punch narrow horizontal gap in one arm segment (like screenshot white strip) - clear a thin world strip of V arm
+  for(var x=19;x<21;x+=g4.CELL) for(var yy=12;yy<13;yy+=g4.CELL) g4.setOwner(g4.cellAt(x+0.01,yy+0.01),0);
+  var path4=Terrain.build(g4.owner,g4.G,g4.CELL,r.id);
+  ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle='#fff'; ctx.fillRect(0,0,400,400);
+  ctx.setTransform(S,0,0,S,0,0); ctx.fillStyle='#c4a8e8'; ctx.fill(path4.fill,'evenodd');
+  var gapMatch=0,gapTot=0;
+  for(y=0;y<40;y+=1) for(x=0;x<40;x+=1){ var o=g4.ownerAt(x+.25,y+.25)===r.id, pu=purple(ctx,x+.25,y+.25,S); gapTot++; if(o===pu) gapMatch++; }
+  window.__result={match:match,total:total,pct:+(100*match/total).toFixed(1),falsePos:falsePos,falseNeg:falseNeg,blobOk:blobOk,bandOk:bandOk,gapPct:+(100*gapMatch/gapTot).toFixed(1)};
+})();
+</script></body>
