@@ -4,8 +4,8 @@
    כך ששטח שחוצה תפר מקבל קואורדינטות רציפות (למשל x=-3..5). אם השטח פרוש על כל הציר – הציר
    מחושב מעגלית, והלולאות "נפרשות" בזמן החיבור. לולאה שלא נסגרת אחרי פרישה (מקיפה את הטורוס)
    מסומנת ב-D (ההיסט, כפולה של W) ומצוירת כרצועה.
-   v9.7: שטח שפרוש על שני הצירים (צלב וכו') נותן לולאה שפנים ה-evenodd שלה הפוך מהבעלות;
-   Terrain.build בודק נקודות שטח ומוסיף מלבן-משלים ל-fill במידת הצורך. */
+   v9.7: שטח שפרוש על שני הצירים – MS על רשת עם מסגרת ריקה (בלי עטיפה כפולה).
+   v9.8: הוסר מלבן-המשלים (evenodd) – בדגימות דלילות הוא צבע את כל המפה בצבע שחקן. */
 (function (root) {
   'use strict';
   var bufA = null, bufB = null;
@@ -159,40 +159,46 @@
     return inside;
   }
 
-  /* v9.7: כשהשטח פרוש על שני הצירים (צלב / טבעת עוטפת), marching squares המעגלי מחזיר
-     לולאה חוזית שפנים ה-evenodd שלה הוא המשלים – הצבעים מתהפכים. אם נקודת בדיקה בתוך
-     שטח בבעלות נופלת מחוץ ללולאות, מוסיפים מלבן ענק ל-fill (evenodd הופך את הפנים).
-     רצועות (D≠0) לא נוגעים – הלוגיקה של band כבר נכונה. */
-  function toPath(loops, insidePts) {
+  /* Path2D מוחלק. רצועה (D≠0) – band+evenodd; לולאה רגילה – addLoop.
+     v9.8: בלי מלבן-משלים – בדגימות שטח דלילות (או צלב דק) hits=0 היה צובע את כל המפה. */
+  function toPath(loops) {
     var path = new Path2D(), stroke = null, k;
-    var hasBand = false;
     for (var l = 0; l < loops.length; l++) {
       var L = loops[l], n = L.length / 2, D = L.D || [0, 0];
       if (D[0] || D[1]) {
-        hasBand = true;
         if (!stroke) { stroke = new Path2D(); for (k = 0; k < l; k++) if (!(loops[k].D && (loops[k].D[0] || loops[k].D[1]))) addLoop(stroke, loops[k]); }
         band(path, stroke, L, D);
         continue;
       }
       addLoop(path, L); if (stroke) addLoop(stroke, L);
     }
-    if (!hasBand && insidePts && insidePts.length) {
-      var hits = 0;
-      for (k = 0; k < insidePts.length; k++) if (pointInLoops(loops, insidePts[k][0], insidePts[k][1])) hits++;
-      if (hits === 0) path.rect(-1e5, -1e5, 2e5, 2e5);   // evenodd complement
-    }
     return { fill: path, stroke: stroke || path };
   }
 
-  /* בונה path מכוון לפי רשת הבעלות: דוגם עד 8 תאי שטח כ"פנים". */
+  /* בונה path מהקונטורים. v9.7 padded dual-cyclic מטפל בצלב; בלי complement מסוכן. */
   function build(owner, G, C, id) {
     var loops = contours(owner, G, C, id);
     if (!loops.length) return null;
-    var pts = [], n = owner.length, step = Math.max(1, (n / 64) | 0);
-    for (var j = 0; j < n && pts.length < 8; j += step) if (owner[j] === id) {
-      pts.push([(j % G + 0.5) * C, (((j / G) | 0) + 0.5) * C]);
+    return toPath(loops);
+  }
+
+  /* האם ה-complement הישן היה נדלק (לבדיקות רגרסיה) – hits==0 ואין רצועה. */
+  function wouldComplement(owner, G, C, id) {
+    var loops = contours(owner, G, C, id);
+    if (!loops.length) return false;
+    var hasBand = false, l, k;
+    for (l = 0; l < loops.length; l++) {
+      var D = loops[l].D || [0, 0];
+      if (D[0] || D[1]) hasBand = true;
     }
-    return toPath(loops, pts);
+    if (hasBand) return false;
+    var pts = [], n = owner.length, step = Math.max(1, (n / 64) | 0);
+    for (k = 0; k < n && pts.length < 8; k += step) if (owner[k] === id)
+      pts.push([(k % G + 0.5) * C, (((k / G) | 0) + 0.5) * C]);
+    if (!pts.length) return false;
+    var hits = 0;
+    for (k = 0; k < pts.length; k++) if (pointInLoops(loops, pts[k][0], pts[k][1])) hits++;
+    return hits === 0;
   }
   var COPIES = 3;
   function band(fill, stroke, L, D) {
@@ -224,7 +230,7 @@
     }
   }
 
-  var api = { contours: contours, toPath: toPath, build: build, pointInLoops: pointInLoops };
+  var api = { contours: contours, toPath: toPath, build: build, pointInLoops: pointInLoops, wouldComplement: wouldComplement };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Terrain = api;
 })(this);

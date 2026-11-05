@@ -57,5 +57,38 @@ console.log('v9.7 קונטור: לולאה רגילה + רצועה אנכית ל
   ok(band.length === 2 && band.every(L => L.D && L.D[1]), 'רצועה אנכית = 2 לולאות עם D אנכי');
 }
 
+
+console.log('v9.8: אין הצפת מפה – דגימות דלילות / dual-cyclic מפוזר');
+{
+  const g = new Game({ size: 40 });
+  const p = g.addPlayer({}); g.spawn(p, { x: 20, y: 20 }); clearId(g, p.id);
+  // נוגע בכל שורה ועמודה אבל שטח דליל – המקרה ש-complement הישן הציף
+  for (let i = 0; i < g.G; i++) {
+    g.setOwner(i * g.G + i, p.id);
+    g.setOwner(i, p.id);
+    g.setOwner(i * g.G, p.id);
+  }
+  ok(Terrain.wouldComplement(g.owner, g.G, g.CELL, p.id), 'מזהים את מקרה ה-complement המסוכן (לבדיקה)');
+  const loops = Terrain.contours(g.owner, g.G, g.CELL, p.id);
+  ok(loops.length >= 1, 'יש קונטור בלי להציף');
+  // build לא אמור להוסיף מלבן – נבדוק שאין נקודה רחוקה "בפנים" אם הקונטור קטן
+  // (בלי Path2D ב-node: מוודאים ש-pointInLoops לא ממלא את רוב המפה)
+  let inside = 0, total = 0;
+  for (let y = 2; y < 38; y += 4) for (let x = 2; x < 38; x += 4) {
+    total++; if (Terrain.pointInLoops(loops, x, y)) inside++;
+  }
+  ok(inside / total < 0.5, 'קונטור לא מכסה ≥50% מהדגימות (inside=' + inside + '/' + total + ') – אין הצפה לוגית');
+}
+{
+  // צלב עדיין נכון אחרי הסרת ה-complement
+  const g = new Game({ size: 40 });
+  const p = g.addPlayer({}); g.spawn(p, { x: 20, y: 20 }); clearId(g, p.id);
+  rect(g, p.id, 19, 0, 21, 40); rect(g, p.id, 0, 19, 40, 21);
+  const loops = Terrain.contours(g.owner, g.G, g.CELL, p.id);
+  ok(Terrain.pointInLoops(loops, 20.25, 20.25) && !Terrain.pointInLoops(loops, 10, 10),
+    'צלב: מרכז בפנים, רביע בחוץ (בלי complement)');
+  ok(!Terrain.wouldComplement(g.owner, g.G, g.CELL, p.id), 'צלב מלא לא מדליק wouldComplement');
+}
+
 console.log('\nסיכום terrain: ' + pass + ' עברו, ' + fail + ' נכשלו');
 if (fail) process.exit(1);
