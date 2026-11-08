@@ -42,7 +42,7 @@ try:
         assert client.evaluate('window.__kovesh.pits.publicList()')==expected
         # Same layouts still visible during a wide-view pack; hazards don't enter minimap.
         host.evaluate("window.__kovesh.packs.apply(window.__kovesh.game,window.__kovesh.me,'wide',window.__kovesh.game.tickNo)")
-        host.wait_for_timeout(350)
+        host.wait_for_timeout(1200)
         host.screenshot(path='/workspace/emojiverse-v99-online-pits.png')
         assert not errors,errors
         print(json.dumps({'layoutStart':True,'midJoin':True,'deathEvent':True,'terrainDelta':True,'persistentLayout':True,'widePack':True,'consoleErrors':errors}))

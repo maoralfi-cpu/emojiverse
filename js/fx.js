@@ -169,7 +169,9 @@
           ctx.stroke(); break;
         case 'implode': { // נבלע פנימה (מתחיל אחרי שהטבעת נסגרת)
           var q = Math.max(0, (t - 0.45) / 0.55), sc = 1 - q * q;
-          if (sc > 0.02) { ctx.globalAlpha = 1; Emoji.draw(ctx, s.emoji, s.col, s.outline, x, y, size * sc * (1 + 0.15 * Math.sin(t * 20) * (1 - q)), null); }
+          var shrinkSize = size * sc * (1 + 0.15 * Math.sin(t * 20) * (1 - q));
+          // Tiny badge sizes make the fixed minimum outline wider than its circle.
+          if (shrinkSize >= 2) { ctx.globalAlpha = 1; Emoji.draw(ctx, s.emoji, s.col, s.outline, x, y, shrinkSize, null); }
           break; }
         case 'pop': { // קופץ, מסתובב ועף הצידה
           ctx.globalAlpha = 1 - t;
