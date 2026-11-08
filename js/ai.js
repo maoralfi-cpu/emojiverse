@@ -15,7 +15,7 @@
 
   function dangerAt(g, p, x, y) {
     // v7: טורוס – אין קירות; רק השובל העצמי מסוכן (trailDist2 כבר עוטף)
-    return g.trailDist2(p, x, y, g.SELF_SKIP, false) < 1.2 * 1.2;
+    return (g.pitSystem && g.pitSystem.dangerAt(g, x, y, 1.4)) || g.trailDist2(p, x, y, g.SELF_SKIP, false) < 1.2 * 1.2;
   }
   function safeHeading(g, p, a, probe) {
     var c = Math.cos(a), s = Math.sin(a);

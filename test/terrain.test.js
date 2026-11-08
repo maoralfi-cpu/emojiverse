@@ -68,7 +68,7 @@ console.log('v9.8: אין הצפת מפה – דגימות דלילות / dual-c
     g.setOwner(i, p.id);
     g.setOwner(i * g.G, p.id);
   }
-  ok(Terrain.wouldComplement(g.owner, g.G, g.CELL, p.id), 'מזהים את מקרה ה-complement המסוכן (לבדיקה)');
+  ok(Terrain.contours(g.owner, g.G, g.CELL, p.id).clip === g.W, 'periodic sparse dual-cyclic clipped to center');
   const loops = Terrain.contours(g.owner, g.G, g.CELL, p.id);
   ok(loops.length >= 1, 'יש קונטור בלי להציף');
   // build לא אמור להוסיף מלבן – נבדוק שאין נקודה רחוקה "בפנים" אם הקונטור קטן
@@ -87,7 +87,7 @@ console.log('v9.8: אין הצפת מפה – דגימות דלילות / dual-c
   const loops = Terrain.contours(g.owner, g.G, g.CELL, p.id);
   ok(Terrain.pointInLoops(loops, 20.25, 20.25) && !Terrain.pointInLoops(loops, 10, 10),
     'צלב: מרכז בפנים, רביע בחוץ (בלי complement)');
-  ok(!Terrain.wouldComplement(g.owner, g.G, g.CELL, p.id), 'צלב מלא לא מדליק wouldComplement');
+  ok(loops.clip === g.W, 'periodic cross uses center tile');
 }
 
 console.log('\nסיכום terrain: ' + pass + ' עברו, ' + fail + ' נכשלו');

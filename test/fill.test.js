@@ -103,7 +103,7 @@ console.log('v9.6 מילוי: רצועה אנכית + אופקית = בלי מי
   ok(!own(g, p, 5, 5) || !own(g, p, 35, 35), 'לא התהפך לכיבוש מלא של הרבעים');
 }
 
-console.log('v9.6 מילוי: רכיב עם ראש יריב לא מתמלא');
+console.log('v9.9: smaller pockets fill and eliminate occupants');
 {
   const g = new Game({ size: 60, rand: seeded(5) });
   const a = g.addPlayer({ name: 'A' }), b = g.addPlayer({ name: 'B' });
@@ -119,10 +119,23 @@ console.log('v9.6 מילוי: רכיב עם ראש יריב לא מתמלא');
   ok(g.ownerAt(30, 33) === 0 && b.alive, 'ראש B בחור ניטרלי (מעל קו החיתוך)');
   a.x = 20; a.y = 30;
   closeLine(g, a, 20, 30, 40, 30);
-  ok(!own(g, a, 30, 33) && !own(g, a, 28, 34), 'החצי עם ראש היריב לא התמלא');
+  ok(own(g, a, 30, 33) && own(g, a, 28, 34), 'head-containing smaller pocket filled');
   ok(own(g, a, 30, 27) || own(g, a, 28, 26), 'החצי בלי ראש יריב כן התמלא');
-  ok(b.alive, 'B עדיין חי (לא נכלא – הראש שמר על הרכיב)');
+  ok(!b.alive && a.kills === 1, 'occupant eliminated with enclosed reason');
+  ok(g.events.some(e => e.type === 'death' && e.victim === b && e.reason === 'enclosed'), 'correct enclosed death event');
   ok(own(g, a, 25, 30) && own(g, a, 35, 30), 'רצועת השובל של A כן נכבשה');
+}
+
+console.log('v9.9: exterior enemy survives two full-wrap crossing bands');
+{
+  const g = new Game({ size: 40 });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 5, y: 5 });
+  const before = g.counts[b.id];
+  closeLine(g, a, 20, 20, 20, 60);
+  closeLine(g, a, 20, 20, 60, 20);
+  ok(b.alive && g.counts[b.id] === before && a.kills === 0, 'largest exterior occupant and territory untouched');
+  ok(!own(g, a, 8, 8) && !own(g, a, 32, 32), 'quadrants not filled');
 }
 
 console.log('v9.6 מילוי: תיקו לגדול ביותר – כולם נשארים בחוץ');
@@ -142,6 +155,19 @@ console.log('v9.6 מילוי: תיקו לגדול ביותר – כולם נשא
   const after = g.counts[p.id];
   ok(!own(g, p, 20, 20) && !own(g, p, 20, 0.5), 'בתיקו אף חצי לא התמלא');
   ok(after - before < 40, 'רק תאי השובל נוספו בתיקו (Δ=' + (after - before) + ')');
+}
+
+console.log('v9.9: both tied-largest exterior occupants survive');
+{
+  const g = new Game({ size: 40 });
+  const a = g.addPlayer({}), b = g.addPlayer({}), c = g.addPlayer({});
+  a.alive = b.alive = c.alive = true; a.x = 20; a.y = 10;
+  b.x = 20; b.y = 20; c.x = 20; c.y = 0.5;
+  rect(g, a.id, 0, 9, 40, 11); rect(g, a.id, 0, 29, 40, 31);
+  g.setOwner(g.cellAt(b.x,b.y),b.id); g.setOwner(g.cellAt(c.x,c.y),c.id);
+  closeLine(g, a, 18, 10, 22, 10);
+  ok(b.alive && c.alive && a.kills === 0, 'heads in both tied-largest components stay safe');
+  ok(g.ownerAt(b.x,b.y)===b.id && g.ownerAt(c.x,c.y)===c.id, 'tied exterior enemy territory not overwritten');
 }
 
 console.log('v9.6 מילוי: ביצועים על מפה מלאה');

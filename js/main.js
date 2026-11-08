@@ -34,6 +34,7 @@
   var mm = null, mmCtx = null, mmImg = null, mmData = null, mmDirty = false;
   var rgb = [], trailCss = [], darkCss = [], fillCss = [], lineCss = [];
   var camX = 0, camY = 0, effects = [], avatarURLs = [], lastBoardKey = '', startBest = { pct: 0, kills: 0 }, keysHeld = {};
+  var pits = new Pits();
   var packs = new Packs();   // v9.5 חבילות הפתעה
 
   // ---------- תפריט ----------
@@ -167,7 +168,7 @@
     paths = [];
     setupMinimap();
     effects = []; FX.clear(); camX = me.x; camY = me.y; layer = null;
-    packs.reset();
+    packs.reset(); pits.reset(); g.pitSystem = pits;
     clearPackVisual();
     $('hudAvatar').src = avatarURLs[me.id];
     $('feed').innerHTML = ''; lastBoardKey = '';
@@ -182,6 +183,7 @@
       var n0 = Math.min(Packs.maxFor(g.W), 2);
       for (var i = 0; i < n0; i++) packs.spawnOne(g);
       packs.events.length = 0;
+      pits.seed(g, packs);
     }
     updateHud(true);
     startLoop();
@@ -329,6 +331,7 @@
       if (mode === 'host' && MPH) MPH.onEvent(ev);
       if (v === me && mode === 'solo') { gameOver(ev); return; }
       if (v === me) { myDeath(ev); return; }
+      if (ev.reason === 'pit') { feed(nm(v) + ' נפל/ה לבור מלכודת 🌋'); return; }
       if (ev.reason === 'left') { feed(nm(v) + ' עזב/ה את המשחק'); return; }
       if (ev.reason === 'enclosed') { feed(nm(v) + ' נכלא/ה בשטח של ' + (ev.killer === me ? 'אותך' : nm(ev.killer)) + (ev.killer === me ? '! ⚔️' : '')); return; }
       if (ev.killer === me) feed('הבסת את ' + nm(v) + '! ⚔️');
@@ -337,7 +340,7 @@
   }
   function myDeath(ev) {
     buzz(150);
-    var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש', enclosed: 'נכלאת בשטח' };
+    var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש', enclosed: 'נכלאת בשטח', pit: 'נפלת לבור מלכודת 🌋' };
     feed('נפסלת (' + (reasons[ev.reason] || '') + (ev.killer ? ' – ' + nm(ev.killer) : '') + ') · חוזרים בעוד 3 שניות');
   }
   function nm(p) { return (p.emoji ? p.emoji + ' ' : '') + p.name; }
@@ -455,12 +458,19 @@
       c.save(); c.translate(kx * N, ky * N);
       // צל רך מתחת לכל שטח
       c.translate(0, 0.28);
-      for (id = 1; id < paths.length; id++) if (paths[id]) { c.fillStyle = darkCss[id]; c.fill(paths[id].fill, 'evenodd'); }
+      for (id = 1; id < paths.length; id++) if (paths[id]) {
+        c.save();
+        // Clip in unshifted tile coordinates; shadow itself remains offset by 0.28.
+        if (paths[id].clip) { c.beginPath(); c.rect(0, -0.28, N, N); c.clip(); }
+        c.fillStyle = darkCss[id]; c.fill(paths[id].fill, 'evenodd'); c.restore();
+      }
       c.translate(0, -0.28);
       for (id = 1; id < paths.length; id++) if (paths[id]) {
+        c.save();
+        if (paths[id].clip) { c.beginPath(); c.rect(0, 0, N, N); c.clip(); }
         c.fillStyle = fillCss[id]; c.fill(paths[id].fill, 'evenodd');
         c.lineWidth = id === me.id ? 0.26 : 0.12;           // השטח שלי בולט יותר
-        c.strokeStyle = lineCss[id]; c.stroke(paths[id].stroke);
+        c.strokeStyle = lineCss[id]; c.stroke(paths[id].stroke); c.restore();
       }
       c.restore();
     }
@@ -551,6 +561,16 @@
           ctx.fillText(Packs.ICON, phx, phy);
         }
       }
+    }
+
+    // Persistent hazards are separate from packs and always drawn above captured land.
+    for (k = 0; k < pits.pits.length; k++) {
+      var hole = pits.pits[k], hp = 1.8;
+      var hx = camX + g.wd(hole.x - camX), hy = camY + g.wd(hole.y - camY);
+      for (var iy = Math.ceil((vy0 - hy - hp) / g.W); iy <= Math.floor((vy0 + vh - hy + hp) / g.W); iy++)
+        for (var ix = Math.ceil((vx0 - hx - hp) / g.W); ix <= Math.floor((vx0 + vw - hx + hp) / g.W); ix++)
+          Pits.draw(ctx, (hx + ix * g.W - vx0) * unitPx, (hy + iy * g.W - vy0) * unitPx,
+            unitPx, now || 0, hole.id, fxLevel() !== 'full');
     }
 
     // דמויות
@@ -645,7 +665,7 @@
     if (best > BEST.pct) BEST.pct = best;
     if (kills > BEST.kills) BEST.kills = kills;
     save('kovesh.best', BEST);
-    var reasons = { self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש', enclosed: 'נכלאת בתוך לולאה' };
+    var reasons = { self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש', enclosed: 'נכלאת בתוך לולאה', pit: 'נפלת לבור מלכודת 🌋' };
     var r = reasons[ev.reason] || '';
     if (ev.killer) r += ' – ' + nm(ev.killer);
     $('overReason').textContent = r;
@@ -752,10 +772,10 @@
     myDeath: myDeath, nm: nm, stopLoop: stopLoop, startLoop: function () { if (state === 'play') startLoop(); },
     setState: function (st) { state = st; }, resize: resize,
     get game() { return g; }, get me() { return me; }, get state() { return state; }, get mode() { return mode; }, get match() { return match; },
-    get packs() { return packs; }, onPackNet: onPackNet, clearPackVisual: clearPackVisual,
+    get pits() { return pits; }, get packs() { return packs; }, onPackNet: onPackNet, clearPackVisual: clearPackVisual,
     TICK_MS: TICK_MS
   };
   // חשיפה לבדיקות אוטומטיות בלבד
   window.__evBooted = true;
-  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get packs() { return packs; }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
+  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get pits() { return pits; }, get packs() { return packs; }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
 })();

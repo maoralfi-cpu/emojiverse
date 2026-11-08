@@ -345,15 +345,15 @@ function frozen(p) { p.speed = 0; }
 }
 
 console.log('v8/v9.6: נכלא בתוך לולאה');
-{ // v9.6: ראש בתוך החור מונע מילוי – היריב חי (חריגת ראש). השטח המרוחק נשאר.
+{ // v9.9: smaller pocket fills, occupant dies, remote territory is removed.
   const g = new Game({ size: 80, rand: seeded(61) });
   const a = g.addPlayer({}), b = g.addPlayer({});
   g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 60, y: 60 });
   const beforeB = g.counts[b.id];
   const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); if (b.alive) { b.x = b.px = 28; b.y = b.py = 25; b.trail = []; b.h = b.target = 0; } } };
   goA(R, 14); goA(D, 10); goA(L, 14); goA(U, 8);
-  ok(a.alive && b.alive && a.kills === 0, 'v9.6: ראש בחור – לא נכלא (החור לא מתמלא)');
-  ok(g.counts[b.id] === beforeB && !own(g, a, 28, 25), 'החור נשאר פתוח ושטח B במקום אחר נשמר');
+  ok(a.alive && !b.alive && a.kills === 1, 'v9.9: enclosed head eliminated, credited to captor');
+  ok(g.counts[b.id] === 0 && own(g, a, 28, 25), 'pocket filled and victim remote territory removed');
 }
 { // מחוץ ללולאה – לא נפגע
   const g = new Game({ size: 80, rand: seeded(62) });
@@ -363,13 +363,13 @@ console.log('v8/v9.6: נכלא בתוך לולאה');
   goA(R, 14); goA(D, 10); goA(L, 14); goA(U, 8);
   ok(a.alive && b.alive && g.counts[b.id] > 0, 'מחוץ ללולאה – לא נפגע');
 }
-{ // ראש על התפר בתוך לולאה שחוצה את התפר – גם כאן חריגת ראש שומרת
+{ // Enclosure crossing the seam uses the same capture/elimination rule.
   const g = new Game({ size: 80, rand: seeded(63) });
   const a = g.addPlayer({}), b = g.addPlayer({});
   g.spawn(a, { x: 72, y: 20 }); g.spawn(b, { x: 40, y: 60 });
   const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); if (b.alive) { b.x = b.px = 0.1; b.y = b.py = 25; b.trail = []; } } };
   goA(R, 16); goA(D, 10); goA(L, 16); goA(U, 8);
-  ok(a.alive && b.alive && a.kills === 0, 'v9.6: ראש על התפר בחור – לא נכלא');
+  ok(a.alive && !b.alive && a.kills === 1, 'v9.9: enclosed head on seam eliminated');
 }
 { // v9.6: ראש על רצועת השובל עצמה – התא מוטבע, enclosed נפסל כרגיל
   const g = new Game({ size: 80, rand: seeded(64) });

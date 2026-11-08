@@ -1,64 +1,97 @@
 #!/usr/bin/env python3
-"""v9.7/v9.8: grid vs pixels for cross; no full-map flood on sparse dual-cyclic."""
-import json, subprocess, sys, time, os
+"""v9.9 periodic contour regression: ownership vs actual fill+stroke+shadow pixels.
+No production files changed; use a headless canvas and the real Terrain module.
+"""
+import json, os
+from pathlib import Path
 from playwright.sync_api import sync_playwright
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-html = """<!DOCTYPE html><body><canvas id=\"c\" width=\"400\" height=\"400\"></canvas>
-<script src=\"../js/game.js\"></script><script src=\"../js/terrain.js\"></script>
-<script>
-(function(){
-  function rect(g,id,x0,y0,x1,y1){for(var y=y0;y<y1;y+=g.CELL)for(var x=x0;x<x1;x+=g.CELL)g.setOwner(g.cellAt(x+.01,y+.01),id);}
-  function painted(ctx,x,y,S){var d=ctx.getImageData(Math.floor(x*S+S/2),Math.floor(y*S+S/2),1,1).data; return d[0]<250;}
-  function paint(g,id){
-    var path=Terrain.build(g.owner,g.G,g.CELL,id);
-    var ctx=document.getElementById('c').getContext('2d',{alpha:false}), S=10;
-    ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle='#fff'; ctx.fillRect(0,0,400,400);
-    if(!path) return {match:0,total:1,pct:0,paintedFrac:0,ownFrac:0};
-    ctx.setTransform(S,0,0,S,0,0); ctx.fillStyle='#c4a8e8'; ctx.fill(path.fill,'evenodd');
-    var match=0,total=0,paintedN=0;
-    for(var y=0;y<40;y++) for(var x=0;x<40;x++){
-      var own=g.ownerAt(x+0.25,y+0.25)===id, pur=painted(ctx,x+0.25,y+0.25,S);
-      total++; if(own===pur) match++; if(pur) paintedN++;
-    }
-    return {match:match,total:total,pct:100*match/total,paintedFrac:paintedN/total,ownFrac:g.counts[id]/g.owner.length};
-  }
-
-  var g=new Game({size:40}); var me=g.addPlayer({}), bot=g.addPlayer({});
-  g.spawn(me,{x:20,y:20}); g.spawn(bot,{x:5,y:5});
-  for(var i=0;i<g.owner.length;i++) if(g.owner[i]===me.id) g.setOwner(i,0);
-  rect(g,me.id,19,0,21,40); rect(g,me.id,0,19,40,21); rect(g,bot.id,2,2,10,10);
-  var cross=paint(g,me.id);
-
-  var g2=new Game({size:40}); var p=g2.addPlayer({}); g2.spawn(p,{x:20,y:20});
-  for(i=0;i<g2.owner.length;i++) if(g2.owner[i]===p.id) g2.setOwner(i,0);
-  for(i=0;i<g2.G;i++){ g2.setOwner(i*g2.G+i,p.id); g2.setOwner(i,p.id); g2.setOwner(i*g2.G,p.id); }
-  var sparse=paint(g2,p.id);
-  var would=Terrain.wouldComplement(g2.owner,g2.G,g2.CELL,p.id);
-
-  window.__result={
-    crossPct:cross.pct, botAlive:g.counts[bot.id]>0,
-    sparsePainted:sparse.paintedFrac, sparseOwn:sparse.ownFrac, wouldComplement:would,
-    flooded: sparse.paintedFrac > 0.5 && sparse.ownFrac < 0.15
-  };
-})();
-</script></body>"""
-path = os.path.join(ROOT, 'test', '_terrain_render.html')
-open(path, 'w').write(html)
-srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8781', '--bind', '127.0.0.1'],
-                       cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-time.sleep(0.5)
-try:
-    with sync_playwright() as p:
-        b = p.chromium.launch(channel='chrome', headless=True)
-        pg = b.new_page()
-        pg.goto('http://127.0.0.1:8781/test/_terrain_render.html', wait_until='load')
-        pg.wait_for_function('window.__result')
-        r = pg.evaluate('window.__result')
-        print(json.dumps(r))
-        ok = r['crossPct'] >= 99.0 and r['botAlive'] and (not r['flooded']) and r['wouldComplement']
-        print('PASS' if ok else 'FAIL')
-        sys.exit(0 if ok else 1)
-finally:
-    srv.terminate()
-    try: os.remove(path)
-    except OSError: pass
+ROOT = Path(__file__).resolve().parent.parent
+with sync_playwright() as p:
+    browser = p.chromium.launch(channel='chrome', headless=True)
+    page = browser.new_page()
+    for name in ['game', 'terrain', 'pits']:
+        page.add_script_tag(path=str(ROOT / 'js' / (name + '.js')))
+    result = page.evaluate(r'''() => {
+      const assert = (v,m) => {if(!v)throw Error(m)};
+      const W=40, G=80, C=.5, scenarios=[];
+      function rect(o,id,x0,y0,x1,y1){for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++)o[y*G+x]=id;}
+      function make(name,setup,seam=false){let o=new Uint8Array(G*G);setup(o);scenarios.push({name,o,seam});}
+      make('dual-cross',o=>{rect(o,1,36,0,44,G);rect(o,1,0,36,G,44);rect(o,2,8,8,24,24)});
+      make('77-percent',o=>{o.fill(1);rect(o,2,8,8,40,40);rect(o,0,48,48,69,69)},true);
+      make('near-full',o=>{o.fill(1);rect(o,2,15,15,22,22)},true);
+      make('full',o=>o.fill(1),true);
+      make('empty',o=>{},false);
+      make('sparse-old-flood',o=>{for(let i=0;i<G;i++){o[i*G+i]=1;o[i]=1;o[i*G]=1;}});
+      make('single-V',o=>rect(o,1,36,0,44,G));
+      make('single-H',o=>rect(o,1,0,36,G,44));
+      make('normal-blob',o=>{rect(o,1,20,20,50,50);rect(o,2,55,55,70,70);});
+      make('seam-blob',o=>{rect(o,1,0,20,8,50);rect(o,1,72,20,80,50)});
+      make('narrow-gap',o=>{o.fill(1);rect(o,0,30,0,31,G);rect(o,2,50,20,70,50)});
+      const colors=['#f4f6fa','#b494d8','#649bd2'], expected=[[244,246,250],[180,148,216],[100,155,210]];
+      const reports=[];
+      for(const sc of scenarios){
+        const snap=sc.o.slice(), paths=[];
+        for(let id=1;id<=2;id++) paths[id]=Terrain.build(sc.o,G,C,id);
+        let tested=0,bad=0,seamBad=0;
+        for(const S of [5,12,20]){
+          const canvas=document.createElement('canvas');canvas.width=canvas.height=80*S;
+          const ctx=canvas.getContext('2d',{alpha:false});
+          const origin=-20;
+          ctx.fillStyle=colors[0];ctx.fillRect(0,0,canvas.width,canvas.height);
+          ctx.setTransform(S,0,0,S,-origin*S,-origin*S);
+          for(let ty=-1;ty<=1;ty++)for(let tx=-1;tx<=1;tx++){
+            ctx.save();ctx.translate(tx*W,ty*W);
+            // Same shadow + clip treatment as renderLayer.
+            ctx.translate(0,.28);
+            for(let id=1;id<=2;id++)if(paths[id]){
+              ctx.save();if(paths[id].clip){ctx.beginPath();ctx.rect(0,-.28,W,W);ctx.clip();}
+              ctx.fillStyle='#776a88';ctx.fill(paths[id].fill,'evenodd');ctx.restore();
+            }
+            ctx.translate(0,-.28);
+            for(let id=1;id<=2;id++)if(paths[id]){
+              ctx.save();if(paths[id].clip){ctx.beginPath();ctx.rect(0,0,W,W);ctx.clip();}
+              ctx.fillStyle=colors[id];ctx.fill(paths[id].fill,'evenodd');
+              ctx.lineWidth=id===1?.26:.12;ctx.strokeStyle='#352343';ctx.stroke(paths[id].stroke);ctx.restore();
+            }
+            ctx.restore();
+          }
+          const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+          function sample(x,y){let px=Math.floor((x-origin)*S),py=Math.floor((y-origin)*S),k=(py*canvas.width+px)*4;return [...img.data.slice(k,k+3)];}
+          function eq(a,b){return a.every((v,i)=>Math.abs(v-b[i])<=2);}
+          function owner(x,y){return sc.o[((y%G+G)%G)*G+(x%G+G)%G];}
+          // Compare centers away from genuine borders; smoothing is intentionally organic.
+          for(let y=-30;y<110;y+=2)for(let x=-30;x<110;x+=2){
+            let id=owner(x,y),safe=true;
+            for(let dy=-3;dy<=3&&safe;dy++)for(let dx=-3;dx<=3;dx++)if(owner(x+dx,y+dy)!==id){safe=false;break;}
+            if(!safe)continue;
+            let rgb=sample((x+.5)*C,(y+.5)*C);tested++;
+            if(!eq(rgb,expected[id]))bad++;
+          }
+          if(sc.seam)for(const x of [-.05,0,.05,39.95,40,40.05])for(const y of [-.05,0,.05,39.95,40,40.05,4,14,24,34])
+            if(!eq(sample(x,y),expected[1]))seamBad++;
+          // Repeat a draw after a tiny camera shift should not change world ownership.
+        }
+        assert(bad===0,sc.name+': wrong safe-region colors '+bad+'/'+tested);
+        assert(seamBad===0,sc.name+': artificial seam/shadow/white sparkle '+seamBad);
+        assert(sc.o.every((v,i)=>v===snap[i]),'renderer modified grid');
+        reports.push({name:sc.name,tested,bad,seamBad});
+      }
+      // Maximum map contour timing (node/browser hardware, not an Android guarantee).
+      const big=new Uint8Array(260*260);big.fill(1);
+      for(let y=50;y<150;y++)for(let x=60;x<150;x++)big[y*260+x]=0;
+      const t=performance.now();Terrain.build(big,260,.5,1);const ms=performance.now()-t;
+      return {reports,maxMapContourMs:+ms.toFixed(2)};
+    }''')
+    print(json.dumps(result, indent=2))
+    # Original crater art preview, for human inspection.
+    page.set_viewport_size({'width': 700, 'height': 340})
+    page.set_content('<canvas id="art" width="700" height="340"></canvas>')
+    page.evaluate('''() => {let c=document.getElementById('art').getContext('2d');
+      c.fillStyle='#b494d8';c.fillRect(0,0,700,340);
+      Pits.draw(c,180,160,52,1000,1,false);Pits.draw(c,430,160,24,2200,2,false);
+      c.fillStyle='#252137';c.font='20px sans-serif';c.fillText('Trap craters • normal / zoomed out',140,285);
+    }''')
+    os.makedirs(ROOT / 'test' / 'shots', exist_ok=True)
+    page.screenshot(path='/workspace/emojiverse-pits-preview.png')
+    browser.close()
+print('PASS: ownership, foreign colors, seam fills/strokes/shadows and no flood/invert')

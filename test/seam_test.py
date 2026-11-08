@@ -21,7 +21,7 @@ try:
         pg.goto(url, wait_until='load')
         pg.evaluate("localStorage.setItem('kovesh.settings', JSON.stringify(Object.assign(JSON.parse(localStorage.getItem('kovesh.settings')||'{}'), {bots:0, size:80})))")
         pg.reload(wait_until='load')
-        pg.click('#playBtn'); pg.wait_for_timeout(300)
+        pg.click('#playBtn'); pg.evaluate('window.__kovesh.pits.reset()'); pg.wait_for_timeout(300)
         # מתחילים ליד הפינה (78,75) – גם השטח ההתחלתי חוצה את תפר x ונוסעים באלכסון: חוצים את תפר x ואת תפר y
         pg.evaluate("""() => { const k = window.__kovesh, g = k.game, me = k.me;
             g.spawn(me, { x: 78, y: 75 }); me.h = me.target = Math.PI / 4 - 0.25; }""")

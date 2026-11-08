@@ -7,6 +7,8 @@ with sync_playwright() as p:
     b=p.chromium.launch(channel='chrome',headless=True); pg=b.new_context(viewport={'width':412,'height':915},is_mobile=True,has_touch=True).new_page()
     pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('console',lambda m:m.type=='error' and errs.append(m.text))
     pg.goto('http://127.0.0.1:8768/'); pg.click('#settingsBtn'); pg.click('#botsSeg button[data-v="0"]'); pg.click('#settingsBack'); pg.click('#playBtn')
+    # Movement-only fixture: hazards have their own dedicated tests.
+    pg.evaluate('window.__kovesh.pits.reset()')
     for k,ms in [('ArrowRight',900),('ArrowDown',900),('ArrowLeft',900),('ArrowUp',1300)]:
         pg.keyboard.down(k); pg.wait_for_timeout(ms); pg.keyboard.up(k)
     pg.wait_for_timeout(1000)

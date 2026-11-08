@@ -124,6 +124,7 @@
     var bestScore = -Infinity, bx = W / 2, by = W / 2;
     for (var attempt = 0; attempt < 160; attempt++) {
       var x = this.rand() * W, y = this.rand() * W;
+      if (this.pitSystem && this.pitSystem.dangerAt(this, x, y, R + 3)) continue;
       // ציון = המרווח היחסי הגרוע מבין שלושת הסוגים (≥1 = עומד בדרישה)
       var stop = bestScore > 0 ? 0 : -1;
       var st = Math.sqrt(Math.min(minD2(terr, x, y, -1), minD2(trails, x, y, -1))) - 1.5 /* דגימה גסה */;
@@ -131,6 +132,7 @@
       if (score > bestScore) { bestScore = score; bx = x; by = y; if (score >= 1.6) break; }
     }
     this.lastSpawnScore = bestScore;
+    if (bestScore === -Infinity) return null;
     return { x: bx, y: by };
   };
   P.areaFree = function (x, y, r) {
@@ -169,9 +171,9 @@
   };
 
   P.spawn = function (p, at) {
-    if (this.counts[p.id] > 0) { var o0 = this.owner; for (var j0 = 0; j0 < o0.length; j0++) if (o0[j0] === p.id) this.setOwner(j0, 0); }
     at = at || this.findSpawn(p.id);
-    if (!at) return false;
+    if (!at || (this.pitSystem && this.pitSystem.dangerAt(this, at.x, at.y, this.SPAWN_R + 3))) return false;
+    if (this.counts[p.id] > 0) { var o0 = this.owner; for (var j0 = 0; j0 < o0.length; j0++) if (o0[j0] === p.id) this.setOwner(j0, 0); }
     this.stamp(at.x, at.y, this.SPAWN_R, p.id, true);
     at = { x: mod(at.x, this.W), y: mod(at.y, this.W) };
     p.x = p.px = p.homeX = at.x; p.y = p.py = p.homeY = at.y;
@@ -235,8 +237,7 @@
 
   /* v9.6 כיבוש על טורוס (Qix): אין "בחוץ" מובטח. השובל מוטבע כשטח; אחר כך מחלקים את כל
      התאים שאינם של השחקן לרכיבי קשירות (4 שכנים, עם עטיפה). כל רכיב בגודל המקסימלי נשאר
-     "חוץ" (בתיקו – כולם בחוץ); כל השאר מתמלאים. רכיב שיש בו ראש של יריב חי לא מתמלא
-     (נשאר חוץ-למעשה) – עדיפות לבחירה הבטוחה. לולאה היקפית אחת => רכיב אחד => רק השובל.
+     "חוץ" (בתיקו – כולם בחוץ); כל השאר מתמלאים, גם אם יש בהם ראש יריב (v9.9). לולאה היקפית אחת => רכיב אחד => רק השובל.
      שני רצועות מצטלבות => רכיב אחד דרך העטיפה => בלי מילוי ובלי קפיצות. חור בסופגנייה
      שנחצה בקו => שני רכיבים קטנים => שניהם מתמלאים. */
   P.capture = function (p) {
@@ -254,21 +255,13 @@
     var comps = this.components(id);
     if (comps.count <= 1) { this.enclosed(p, heads); this.events.push({ type: 'capture', player: p, cells: 0 }); return 0; }
     var maxSz = 0; for (k = 0; k < comps.count; k++) if (comps.size[k] > maxSz) maxSz = comps.size[k];
-    // v9.6: רכיב עם ראש יריב – לא ממלאים אותו (נשאר "חוץ")
-    var skip = new Uint8Array(comps.count);
     var owner = this.owner, mark = this._mark, base = comps.base, n = owner.length;
-    for (k = 0; k < heads.length; k += 3) {
-      var hc = heads[k + 1];
-      if (owner[hc] === id) continue;                         // הראש על השובל/שטח שכבר שלנו – enclosed יטפל
-      var hcComp = mark[hc] - base;
-      if (hcComp >= 0 && hcComp < comps.count) skip[hcComp] = 1;
-    }
     var gained = 0, victims = [], taken = 0, vc = {};
     var bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity, W = this.W;
     for (var j = 0; j < n; j++) {
       var c = mark[j] - base;
       if (c < 0 || owner[j] === id) continue;
-      if (comps.size[c] >= maxSz || skip[c]) continue;         // חוץ / תיקו לגדול / ראש יריב
+      if (comps.size[c] >= maxSz) continue;         // exterior, including ALL tied-largest components
       var prev = owner[j];
       this.setOwner(j, id); gained++;
       // v9: תיבה תוחמת (פרושה ליד הכובש) ותאים שנלקחו מאחרים – לאפקטים
@@ -289,7 +282,7 @@
     return gained;
   };
   /* v8: מי שהראש שלו נמצא בתא שהפך עכשיו לשל הכובש – נכלא ונפסל (גם אם יש לו שטח במקום אחר).
-     v9.6: רכיב עם ראש יריב לא מתמלא, ולכן enclosed לא יפעיל עליו – היריב "שומר" על החור.
+     v9.9: filled smaller pockets eliminate their occupants; largest exterior is never filled.
      אם הראש נמצא על תא שהשובל עצמו הטביע – התא כבר של הכובש, והיריב נכלא כרגיל. */
   P.enclosed = function (p, heads) {
     for (var k = 0; k < heads.length; k += 3) {
@@ -339,6 +332,11 @@
       p.x = mod(p.x, this.W); p.y = mod(p.y, this.W);                       // עטיפה: אין קיר
       p.dead = null;
       moving.push(p);
+    }
+    // Pits precede other collisions/capture; a dead head cannot close a trail this tick.
+    if (this.pitSystem) {
+      this.pitSystem.tick(this);
+      for (k = moving.length - 1; k >= 0; k--) if (!moving[k].alive) moving.splice(k, 1);
     }
     // ראש בראש
     var H2 = this.HEADON * this.HEADON;

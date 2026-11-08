@@ -314,7 +314,8 @@
     var roundMs = cfg.minutes * 60000;
     var g = Core.startMatch({ mode: 'host', size: size, roster: list, myId: 1, diff: cfg.diff, roundMs: roundMs });
     tracker = new Net.Tracker(g); inGame = true; lastRank = null;
-    humans.forEach(function (h) { if (h.conn) send(h.conn, { t: 'start', size: size, roster: roster(g), you: h.pid, roundMs: roundMs, diff: cfg.diff, packs: Core.packs.publicList() }); });
+    humans.forEach(function (h) { if (h.conn) send(h.conn, { t: 'start', size: size, roster: roster(g), you: h.pid, roundMs: roundMs, diff: cfg.diff, packs: Core.packs.publicList(), pits: Core.pits.publicList() }); });
+    broadcast({ t: 'pit', list: Core.pits.publicList() });
     broadcast(Net.encodeSnap(g, tracker, roundMs, false));
   }
   function joinMidGame(h) {
@@ -323,7 +324,7 @@
     var p = Core.addMatchPlayer({ name: h.name, avatar: h.avatar, emoji: h.emoji && usedNow.indexOf(h.emoji) < 0 ? h.emoji : Emoji.randomFree(usedNow), color: Avatars.list[h.avatar].color, isBot: false }, true);
     h.pid = p.id;
     humans.forEach(function (o) { if (o.conn && o !== h) send(o.conn, { t: 'roster', roster: roster(g) }); });
-    send(h.conn, { t: 'start', size: g.W, roster: roster(g), you: h.pid, roundMs: Core.match.roundMs, diff: cfg.diff, mid: true, packs: Core.packs.publicList() });
+    send(h.conn, { t: 'start', size: g.W, roster: roster(g), you: h.pid, roundMs: Core.match.roundMs, diff: cfg.diff, mid: true, packs: Core.packs.publicList(), pits: Core.pits.publicList() });
     send(h.conn, Net.encodeSnap(g, new Net.Tracker(g), Core.match.msLeft, Core.state === 'paused'));
     if (Core.state === 'paused') send(h.conn, { t: 'pause', why: 'bg' });
     Core.feed(h.name + ' הצטרף/ה');
@@ -475,7 +476,11 @@
       throttle = new Net.InputThrottle(function (a) { send(conn, 'i' + a.toFixed(3)); }, 33, 0.01);
       Core.startMatch({ mode: 'client', size: m.size, roster: m.roster, myId: m.you, diff: m.diff, roundMs: m.roundMs });
       m.roster.forEach(function (r, i) { if (r.gone) Core.game.players[i].gone = true; });
+      Core.pits.applySync(Core.game, m.pits || []);
       if (m.packs) Core.onPackNet({ a: 'sync', list: m.packs });
+    }
+    else if (m.t === 'pit') {
+      if (Core.mode === 'client' && Core.game) Core.pits.applySync(Core.game, m.list);
     }
     else if (m.t === 'pack') {
       // לקוחות ישנים בלי הטיפול הזה מתעלמים (לא מגיעים לכאן בכלל אם אין ענף) – כאן רק v9.5+
@@ -494,6 +499,7 @@
       Core.fxDeath(v, by, m.r, m.b);
       if (m.r === 'left') { Core.feed(Core.nm(v) + ' עזב/ה את המשחק'); v.gone = true; return; }
       if (v === Core.me) Core.myDeath({ reason: m.r, killer: by });
+      else if (m.r === 'pit') Core.feed(Core.nm(v) + ' נפל/ה לבור מלכודת 🌋');
       else if (m.r === 'enclosed' && by) Core.feed(Core.nm(v) + ' נכלא/ה בשטח של ' + (by === Core.me ? 'אותך! ⚔️' : Core.nm(by)));
       else if (by === Core.me) Core.feed('הבסת את ' + Core.nm(v) + '! ⚔️');
       else if (by) Core.feed(Core.nm(by) + ' הביס את ' + Core.nm(v));

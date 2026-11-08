@@ -43,6 +43,7 @@
   /* איזה אפקט לכל סוג פסילה (נבדק ב-node) */
   var PLAN = {
     trail: ['snap', 'slash', 'pop'],
+    pit: ['implode', 'burst'],
     enclosed: ['pulse', 'cage', 'implode', 'burst'],
     head: ['shock', 'knock', 'stars'],
     self: ['wobble', 'dizzy'],

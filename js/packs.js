@@ -85,6 +85,7 @@
         if (d < HEAD_CLEAR) { ok = false; break; }
         if (d < minD) minD = d;
       }
+      if (ok && g.pitSystem && g.pitSystem.dangerAt(g, x, y, 3)) ok = false;
       // גם לא על חבילה קיימת
       if (ok) for (k = 0; k < this.packs.length; k++) {
         var pk = this.packs[k];
