@@ -181,3 +181,10 @@ html.safe .card>*{margin:6px 0}
 #roundTag{font-size:clamp(12px,2dvh,15px);color:#6b7589;font-weight:600}
 #rankList .p{display:flex;flex-direction:column;align-items:flex-end;line-height:1.15;margin-inline-start:auto;font-weight:600;text-align:end}
 #rankList .tot-stat{font-size:clamp(10px,1.7dvh,12px);color:#6b7589;font-weight:600}
+
+/* v9.12: מסך תוצאות נקי – זכיות כרשימה מסודרת (בלי חיתוך שמות), שורת סטטיסטיקה אחת בולטת ושורה משנית עדינה רק כשיש בה מידע */
+#awardsRow{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:3px;margin:2px 0 4px}
+.award-chip{white-space:normal;overflow:visible;text-overflow:clip;border-radius:10px;padding:3px 10px;text-align:start;background:#fff6e0;color:#5b4a1f;font-weight:600}
+#rankList .round-stat{font-variant-numeric:tabular-nums;white-space:nowrap}
+#rankList .tot-stat{font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums}
+#rankList .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}

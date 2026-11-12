@@ -1,10 +1,15 @@
 /* Emojiverse – ניקוד מצטבר וזכיות במשחק אונליין (טהור, ללא DOM, נבדק ב-node).
-   סיכום לאורך סיבובים: הריגות, סך אחוזי שטח בסוף סיבוב, ומיתות.
+   סיכום לאורך סיבובים: הריגות, סך שיאי השטח (v9.12: השיא של כל סיבוב, לא השטח בסוף הסיבוב), ומיתות.
+   שדה pct בסיכום = סכום השיאים (השם נשמר לתאימות עם לקוחות ישנים). אם peak חסר ברשומה, משתמשים ב-pct.
    תארים מחושבים אצל המארח ומשודרים ללקוחות. */
 (function (root) {
   'use strict';
 
   function empty() { return {}; }
+
+  /* שיא השטח של סיבוב: המקסימום בין השיא שנמדד לבין השטח ברגע הסיום, מעוגל לעשירית. */
+  function roundPeak(best, pct) { return Math.round(Math.max(+best || 0, +pct || 0) * 10) / 10; }
+  function peakOf(e) { return typeof e.peak === 'number' && isFinite(e.peak) ? Math.max(e.peak, e.pct || 0) : (e.pct || 0); }
 
   function cloneRow(t) {
     return { key: t.key, name: t.name, emoji: t.emoji, avatar: t.avatar, color: t.color, isBot: !!t.isBot, kills: t.kills || 0, pct: t.pct || 0, deaths: t.deaths || 0, rounds: t.rounds || 0 };
@@ -21,13 +26,13 @@
       if (!e || !e.key) continue;
       prev = pick[e.key];
       if (!prev) { pick[e.key] = e; continue; }
-      // אותו מפתח פעמיים בסיבוב (עזב וחזר): מחברים הריגות/מיתות, ואחוז השטח של מי שנשאר
+      // אותו מפתח פעמיים בסיבוב (עזב וחזר): מחברים הריגות/מיתות, אחוז השטח של מי שנשאר, והשיא הגבוה מבין השניים
       var live = !e.gone ? e : (!prev.gone ? prev : e);
       pick[e.key] = {
         key: e.key,
         name: live.name, emoji: live.emoji, avatar: live.avatar, color: live.color, isBot: live.isBot,
         kills: (prev.kills || 0) + (e.kills || 0),
-        pct: live.pct, deaths: (prev.deaths || 0) + (e.deaths || 0),
+        pct: live.pct, peak: Math.max(peakOf(prev), peakOf(e)), deaths: (prev.deaths || 0) + (e.deaths || 0),
         gone: !!(prev.gone && e.gone)
       };
     }
@@ -42,7 +47,7 @@
         color: e.color != null ? e.color : (prev && prev.color),
         isBot: e.isBot != null ? !!e.isBot : !!(prev && prev.isBot),
         kills: (prev ? prev.kills : 0) + (e.kills || 0),
-        pct: Math.round(((prev ? prev.pct : 0) + (e.pct || 0)) * 10) / 10,
+        pct: Math.round(((prev ? prev.pct : 0) + peakOf(e)) * 10) / 10,
         deaths: (prev ? prev.deaths : 0) + (e.deaths || 0),
         rounds: (prev ? prev.rounds : 0) + 1
       };
@@ -78,7 +83,21 @@
     return out;
   }
 
-  var Awards = { empty: empty, addRound: addRound, present: present, awards: awards };
+  /* v9.12: טקסט השורה המשנית במסך התוצאות (או '' כשאין מה להוסיף).
+     סיבוב 1: הסיכום זהה לסיבוב, אז מציגים רק "שיא X%" אם השיא גבוה מהשטח בסיום.
+     מסיבוב 2: "מצטבר X% · ⚔️Y" (שטח מצטבר = סכום שיאים).
+     המספרים עטופים ב-LRI/PDI כדי שלא יתהפכו בתוך שורה עברית. */
+  var LRI = '\u2066', PDI = '\u2069';
+  function statText(pct, kills) { return (+pct || 0).toFixed(1) + '% · ⚔️' + (kills || 0); }
+  function subLine(r, tot, round) {
+    if (!r) return '';
+    if (tot && (round || 0) > 1 && (tot.rounds || 0) > 1) return 'מצטבר ' + LRI + statText(tot.pct, tot.kills) + PDI;
+    var pk = typeof r.peak === 'number' ? r.peak : (tot && (tot.rounds || 0) === 1 ? tot.pct : null);
+    if (pk != null && pk - (r.pct || 0) >= 0.05) return 'שיא ' + LRI + (+pk).toFixed(1) + '%' + PDI;
+    return '';
+  }
+
+  var Awards = { statText: statText, subLine: subLine, roundPeak: roundPeak, empty: empty, addRound: addRound, present: present, awards: awards };
   if (typeof module !== 'undefined' && module.exports) module.exports = Awards;
   else root.Awards = Awards;
 })(this);

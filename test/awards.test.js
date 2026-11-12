@@ -157,4 +157,69 @@ test('addRound does not mutate inputs', function () {
   assert.equal(src.a.kills, 1);
 });
 
+// ---- v9.12: שטח מצטבר לפי שיא בסיבוב (Gemini Flash drafted part of these; adapted) ----
+test('v9.12 peak: totals add the round peak, not the end-of-round snapshot', function () {
+  var t = Awards.addRound(Awards.empty(), [p({ key: 'a', pct: 5, peak: 10 })]);
+  t = Awards.addRound(t, [p({ key: 'a', pct: 15, peak: 20 })]);
+  assert.equal(t.a.pct, 30);
+});
+
+test('v9.12 peak: player who died at the end (0%) still banks the peak', function () {
+  var t = Awards.addRound(Awards.empty(), [p({ key: 'a', pct: 0, peak: 18.4, deaths: 1 })]);
+  assert.equal(t.a.pct, 18.4);
+});
+
+test('v9.12 peak: missing peak falls back to pct; peak lower than pct uses pct', function () {
+  var t = Awards.addRound(Awards.empty(), [p({ key: 'a', pct: 15 }), p({ key: 'b', pct: 9, peak: 4 })]);
+  assert.equal(t.a.pct, 15); assert.equal(t.b.pct, 9);
+});
+
+test('v9.12 territory king = real king by peaks, even when someone else finished higher', function () {
+  // א החזיק 40% באמצע ונפסל (0% בסוף); ב סיים עם 12% ושיא 12% -> א מלך השטח
+  var entries = [p({ key: 'a', name: 'א', pct: 0, peak: 40, deaths: 1 }), p({ key: 'b', name: 'ב', pct: 12, peak: 12 })];
+  var aw = Awards.awards(Awards.present(Awards.addRound(Awards.empty(), entries), ['b', 'a']));
+  assert.equal(aw.territory.length, 1); assert.equal(aw.territory[0].key, 'a');
+});
+
+test('v9.12 sum of peaks over two rounds decides the territory king', function () {
+  var t = Awards.addRound(Awards.empty(), [p({ key: 'a', pct: 10, peak: 30 }), p({ key: 'b', pct: 25, peak: 25 })]);
+  t = Awards.addRound(t, [p({ key: 'a', pct: 5, peak: 10 }), p({ key: 'b', pct: 20, peak: 20 })]);
+  assert.equal(t.a.pct, 40); assert.equal(t.b.pct, 45);
+  var aw = Awards.awards(Awards.present(t, ['a', 'b']));
+  assert.equal(aw.territory[0].key, 'b');
+});
+
+test('v9.12 duplicate key in one round: peak is the max of both, rounds counted once', function () {
+  var t = Awards.addRound(Awards.empty(), [p({ key: 'a', pct: 3, peak: 22, gone: true, kills: 1 }), p({ key: 'a', pct: 8, peak: 9, kills: 2 })]);
+  assert.equal(t.a.pct, 22); assert.equal(t.a.kills, 3); assert.equal(t.a.rounds, 1);
+});
+
+test('v9.12 roundPeak: max of best and current, one decimal', function () {
+  assert.equal(Awards.roundPeak(12.345, 3), 12.3);
+  assert.equal(Awards.roundPeak(2, 7.86), 7.9);
+  assert.equal(Awards.roundPeak(undefined, 0), 0);
+});
+
+test('v9.12 medals still use end-of-round pct (Net.ranking), not peak', function () {
+  var Net = require('../js/net.js');
+  var g = { players: [
+    { id: 1, name: 'א', bestPct: 40, kills: 0 }, { id: 2, name: 'ב', bestPct: 12, kills: 0 }
+  ], pct: function (pl) { return pl.id === 1 ? 0 : 12; } };
+  var rank = Net.ranking(g);
+  assert.equal(rank[0].id, 2);
+});
+
+test('v9.12 subLine: round 1 shows peak only when it differs; nothing when equal', function () {
+  assert.equal(Awards.subLine({ pct: 7.8, kills: 3, peak: 7.8 }, { pct: 7.8, kills: 3, rounds: 1 }, 1), '');
+  assert.equal(Awards.subLine({ pct: 0, kills: 0, peak: 18.4 }, { pct: 18.4, kills: 0, rounds: 1 }, 1), 'שיא \u206618.4%\u2069');
+  // לקוח שמקבל rank בלי peak (מארח ישן) – נופל לסיכום של סיבוב אחד
+  assert.equal(Awards.subLine({ pct: 7.8, kills: 3 }, { pct: 7.8, kills: 3, rounds: 1 }, 1), '');
+});
+
+test('v9.12 subLine: from round 2 shows cumulative line; mid-joiner with 1 round falls back', function () {
+  assert.equal(Awards.subLine({ pct: 5, kills: 1, peak: 9 }, { pct: 31.2, kills: 4, rounds: 2 }, 2), 'מצטבר \u206631.2% · ⚔️4\u2069');
+  assert.equal(Awards.subLine({ pct: 5, kills: 1, peak: 9 }, { pct: 9, kills: 1, rounds: 1 }, 2), 'שיא \u20669.0%\u2069');
+  assert.equal(Awards.subLine({ pct: 5, kills: 1, peak: 5 }, null, 2), '');
+});
+
 console.log(checks + ' award tests passed');

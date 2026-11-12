@@ -353,11 +353,11 @@
     roundOver: function () {
       var g = Core.game; lastRank = Net.ranking(g);
       var entries = g.players.map(function (p) {
-        return { key: p.key, name: p.name, emoji: p.emoji, avatar: p.avatar, color: p.color, isBot: p.isBot, kills: p.kills, pct: +g.pct(p).toFixed(1), deaths: p.deaths || 0, gone: !!p.gone };
+        return { key: p.key, name: p.name, emoji: p.emoji, avatar: p.avatar, color: p.color, isBot: p.isBot, kills: p.kills, pct: +g.pct(p).toFixed(1), peak: Awards.roundPeak(p.bestPct, g.pct(p)), deaths: p.deaths || 0, gone: !!p.gone };
       });
       matchTotals = Awards.addRound(matchTotals, entries);
       matchRound++;
-      lastRank.forEach(function (r) { var p = g.players[r.id - 1]; if (p) { r.key = p.key; r.deaths = p.deaths || 0; } });
+      lastRank.forEach(function (r) { var p = g.players[r.id - 1]; if (p) { r.key = p.key; r.deaths = p.deaths || 0; r.peak = Awards.roundPeak(p.bestPct, g.pct(p)); } });
       var presentKeys = lastRank.map(function (r) { return r.key; }).filter(Boolean);
       var totalsList = Awards.present(matchTotals, presentKeys);
       lastResults = { t: 'results', rank: lastRank, totals: totalsList, awards: Awards.awards(totalsList), round: matchRound };
@@ -392,7 +392,11 @@
     chip('🗡️', 'מלך החיסולים', awards.kills);
     chip('🗺️', 'מלך השטח', awards.territory);
     chip('👑', 'אלוף כפול', awards.double);
-    chip('🛡️', 'בלתי מנוצח', awards.undefeated);
+    // v9.12: כשכולם בלתי מנוצחים – שורה קצרה במקום רשימת כל השמות (התואר עצמו לא השתנה)
+    var nPresent = (rank || []).length;
+    if (awards.undefeated && awards.undefeated.length > 1 && awards.undefeated.length >= nPresent) {
+      var all = document.createElement('div'); all.className = 'award-chip'; all.textContent = '🛡️ בלתי מנוצחים: כולם'; box.appendChild(all);
+    } else chip('🛡️', 'בלתי מנוצח', awards.undefeated);
     var tag = $('roundTag');
     tag.textContent = round > 1 ? ' · אחרי ' + round + ' סיבובים' : (round === 1 ? ' · סיבוב 1' : '');
     var ol = $('rankList'); ol.innerHTML = '';
@@ -404,14 +408,12 @@
       var medal = ['🥇', '🥈', '🥉'][i] || (i + 1) + '.';
       li.appendChild(document.createTextNode(medal + ' ')); li.appendChild(dot); li.appendChild(img);
       var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name; li.appendChild(nm);
+      // v9.12: שורה אחת ברורה לסיבוב; שורה משנית רק כשהיא מוסיפה מידע (שיא שונה מהסיום, או מצטבר אחרי 2+ סיבובים)
       var st = document.createElement('span'); st.className = 'p';
-      var line1 = document.createElement('span'); line1.className = 'round-stat'; line1.textContent = r.pct.toFixed(1) + '% · ⚔️' + r.kills; st.appendChild(line1);
-      var tot = r.key ? totByKey[r.key] : null;
-      if (tot) {
-        var line2 = document.createElement('span'); line2.className = 'tot-stat';
-        line2.textContent = 'סה״כ ' + tot.pct.toFixed(1) + '% · ⚔️' + tot.kills;
-        st.appendChild(line2);
-      }
+      var line1 = document.createElement('span'); line1.className = 'round-stat';
+      line1.dir = 'ltr'; line1.textContent = Awards.statText(r.pct, r.kills); st.appendChild(line1);
+      var tot = r.key ? totByKey[r.key] : null, sub = Awards.subLine(r, tot, round);
+      if (sub) { var line2 = document.createElement('span'); line2.className = 'tot-stat'; line2.textContent = sub; st.appendChild(line2); }
       li.appendChild(st);
       if (r.id === myPid) li.classList.add('me');
       ol.appendChild(li);
