@@ -124,6 +124,27 @@ test('v9.14 סימולציה: נכלא בחיים האחרונים – מודח'
   for (let t = 0; t < 600; t++) { g.tickNo++; assert.ok(!Lives.respawnStep(g, b, true, 180, 0)); }
   assert.ok(Lives.matchOver(g.players).over && Lives.matchOver(g.players).winners[0] === a);
 });
+test('v9.15: פולש מוגן עם שובל פתוח שהוקף (בלי נגיעה בשובל) – נפסל, מאבד חיים, חוזר מחוץ לשטח הכולא', () => {
+  const g = game(2, 100, 13); Lives.init(g.players, 3);
+  const [a, v] = g.players; g.spawn(a, { x: 25, y: 25 }); g.spawn(v, { x: 57, y: 25 });
+  rect(g, a.id, 10, 10, 40, 40); rect(g, v.id, 50, 18, 62, 32); g._lost.fill(0);
+  v.x = v.px = 52; v.y = v.py = 25; a.x = a.px = 36; a.y = a.py = 15; a.speedMul = 1e-9;
+  const step = (fa, fv) => { if (a.alive) a.h = a.target = fa; if (v.alive) v.h = v.target = fv; g.step(); };
+  for (let i = 0; i < Math.round(20 / (g.SPEED * g.DT)); i++) step(0, Math.PI);
+  assert.equal(g.ownerAt(v.x, v.y), a.id); assert.ok(v.trail.length > 100);
+  Lives.protect(v, g.tickNo); v.invulnUntil = g.tickNo + 100000;
+  a.speedMul = 1; const VX = v.x, VY = v.y, VT = v.trail.slice(), VTB = v.tb.slice();
+  const goA = (ang, dist) => { const k = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < k && a.alive; i++) { step(ang, Math.PI); if (v.alive) { v.x = v.px = VX; v.y = v.py = VY; v.trail = VT.slice(); v.tb = VTB.slice(); } } };
+  goA(0, 19); goA(Math.PI / 2, 20); goA(Math.PI, 19); goA(-Math.PI / 2, 3);
+  assert.ok(a.alive && !a.trail.length, 'הלולאה נסגרה');
+  assert.ok(!v.alive, 'הפולש המוגן נכלא ונפסל');
+  const ev = g.events.find(e => e.type === 'death' && e.victim === v);
+  assert.equal(ev.reason, 'enclosed'); assert.equal(ev.killer, a); assert.equal(g.counts[v.id], 0);
+  assert.equal(Lives.onDeath(v, g.tickNo), 2);
+  let back = false; for (let t = 0; t < 400 && !back; t++) { g.tickNo++; back = Lives.respawnStep(g, v, true, 180, 0); }
+  assert.ok(back && v.alive);
+  assert.notEqual(g.ownerAt(v.x, v.y), a.id, 'לא חוזר על השטח של הכובש');
+});
 test('הגנה לא חוסמת עזיבה', () => {
   const g = game(2); Lives.init(g.players, 3); const a = g.players[0]; g.spawn(a, { x: 15, y: 15 });
   Lives.protect(a, g.tickNo); g.kill(a, null, 'left'); assert.ok(!a.alive);

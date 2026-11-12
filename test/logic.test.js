@@ -453,6 +453,68 @@ const pinOn = (x, y) => (g, b) => { b.x = b.px = x; b.y = b.py = y; b.trail = [x
   goA(R, 10); goA(D, 8); goA(L, 7.5); goA(U, 6);
   ok(a.alive && !a.trail.length && g.counts[a.id] > 18 * 18 * 4 && b.alive && c.alive, 'v9.14: לולאה בצד הבסיס – השחקנים על הבסיס רחוק ממנה לא נפגעים');
 }
+console.log('v9.15: פולש עם שובל פתוח שהוקף בלי לגעת בשובל');
+// A: בלוק גדול. V: שטח מימין, עם רווח ריק ביניהם. V יוצא מהשטח שלו ופולש עמוק לשטח של A עם שובל אמיתי.
+// A יוצא מהבלוק, מקיף את הרווח ואת שורש השובל (עובר מעל השטח של V) וחוזר – בלי לגעת בשובל של V.
+function invasion(seed, opts) {
+  opts = opts || {};
+  const off = opts.off || 0, W = 100;
+  const g = new Game({ size: W, rand: seeded(seed) });
+  const a = g.addPlayer({}), v = g.addPlayer({});
+  const X = x => g.wrap(x + off);
+  g.spawn(a, { x: X(25), y: 25 }); g.spawn(v, { x: X(57), y: 25 });
+  const rectW = (id, x0, y0, x1, y1) => { for (let y = y0; y < y1; y += g.CELL) for (let x = x0; x < x1; x += g.CELL) g.setOwner(g.cellAt(X(x) + 0.01, y + 0.01), id); };
+  rectW(a.id, 10, 10, 40, 40); rectW(v.id, 50, 18, 62, 32); g._lost.fill(0);
+  if (opts.before) opts.before(g, a, v);
+  v.x = v.px = X(52); v.y = v.py = 25; a.x = a.px = X(36); a.y = a.py = 15; a.speedMul = 1e-9;
+  const step = (fa, fv) => { if (a.alive) a.h = a.target = fa; if (v.alive) v.h = v.target = fv; g.step(); };
+  for (let i = 0; i < Math.round((opts.invade || 20) / (g.SPEED * g.DT)); i++) step(0, L);
+  const inv = { head: g.ownerAt(v.x, v.y), trail: v.trail.length, rootOwner: g.ownerAt(v.trail[0], v.trail[1]) };
+  a.speedMul = 1; const VX = v.x, VY = v.y, VT = v.trail.slice(), VTB = v.tb.slice();
+  const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { step(ang, L); if (v.alive) { v.x = v.px = VX; v.y = v.py = VY; v.trail = VT.slice(); v.tb = VTB.slice(); } } };
+  (opts.loop || (() => { goA(R, 19); goA(D, 20); goA(L, 19); goA(U, 3); }))(goA);
+  return { g, a, v, inv };
+}
+{ // מקרה מאור: נכלא/ה, ההריגה לכובש, השטח נמחק, אין שובל חי
+  const { g, a, v, inv } = invasion(81);
+  ok(inv.head === a.id && inv.trail > 100 && inv.rootOwner === v.id, 'v9.15: V פלש עמוק לשטח של A עם שובל אמיתי שמתחיל בשטח שלו');
+  const ev = g.events.find(e => e.type === 'death' && e.victim === v);
+  ok(a.alive && !a.trail.length && !a.lastTrail, 'v9.15: A סגר לולאה בלי לגעת בשובל של V');
+  ok(!v.alive && ev && ev.reason === 'enclosed' && ev.killer === a && a.kills === 1, 'v9.15: הפולש שהוקף – נכלא ונפסל (enclosed), ההריגה ל-A');
+  ok(g.counts[v.id] === 0 && v.trail.length === 0, 'v9.15: השטח של הפולש נמחק, אין שובל חי מנותק');
+}
+{ // אותו דבר מעבר לתפר
+  const { g, a, v } = invasion(82, { off: 70 });
+  ok(a.alive && !a.trail.length && !v.alive && a.kills === 1, 'v9.15: פולש מוקף מעבר לתפר – נכלא');
+}
+{ // שליטה: לולאה בצד השמאלי של הבלוק, רחוק מהפולש ומהשורש
+  const g = new Game({ size: 100, rand: seeded(84) });
+  const a = g.addPlayer({}), v = g.addPlayer({});
+  g.spawn(a, { x: 25, y: 25 }); g.spawn(v, { x: 57, y: 25 });
+  rect(g, a.id, 10, 10, 40, 40); rect(g, v.id, 50, 18, 62, 32); g._lost.fill(0);
+  v.x = v.px = 52; v.y = v.py = 25; a.x = a.px = 14; a.y = a.py = 15; a.speedMul = 1e-9;
+  const step = (fa, fv) => { if (a.alive) a.h = a.target = fa; if (v.alive) v.h = v.target = fv; g.step(); };
+  for (let i = 0; i < Math.round(20 / (g.SPEED * g.DT)); i++) step(L, L);
+  a.speedMul = 1; const VX = v.x, VY = v.y, VT = v.trail.slice(), VTB = v.tb.slice();
+  const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { step(ang, L); if (v.alive) { v.x = v.px = VX; v.y = v.py = VY; v.trail = VT.slice(); v.tb = VTB.slice(); } } };
+  goA(L, 12); goA(D, 20); goA(R, 12); goA(U, 3);
+  ok(a.alive && !a.trail.length && g.counts[a.id] > 30 * 30 * 4 + 100, 'שליטה: A כבש בצד השני של הבלוק');
+  ok(v.alive && v.trail.length > 100 && g.counts[v.id] > 0, 'שליטה: הפולש על השטח של A רחוק מהלולאה – חי, השובל שלם');
+}
+{ // שליטה: השורש נבלע אבל הראש של V בשטח ריק בחוץ (לא בתוך השטח של A) – חי
+  const g = new Game({ size: 100, rand: seeded(85) });
+  const a = g.addPlayer({}), v = g.addPlayer({});
+  g.spawn(a, { x: 25, y: 25 }); g.spawn(v, { x: 57, y: 25 });
+  rect(g, a.id, 10, 10, 40, 40); rect(g, v.id, 50, 18, 62, 32); g._lost.fill(0);
+  // V יוצא למטה מהשטח שלו אל שטח ריק (לא לשטח של A)
+  v.x = v.px = 52; v.y = v.py = 30; a.x = a.px = 36; a.y = a.py = 15; a.speedMul = 1e-9;
+  const step = (fa, fv) => { if (a.alive) a.h = a.target = fa; if (v.alive) v.h = v.target = fv; g.step(); };
+  for (let i = 0; i < Math.round(25 / (g.SPEED * g.DT)); i++) step(0, D);
+  a.speedMul = 1; const VX = v.x, VY = v.y, VT = v.trail.slice(), VTB = v.tb.slice();
+  const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { step(ang, D); if (v.alive) { v.x = v.px = VX; v.y = v.py = VY; v.trail = VT.slice(); v.tb = VTB.slice(); } } };
+  goA(R, 19); goA(D, 10); goA(L, 19); goA(U, 3);   // לולאה קטנה עד y≈25 – לא מגיעה לשובל של V
+  ok(a.alive && !a.trail.length && v.alive && v.trail.length > 100, 'שליטה: לולאה שחותכת את השטח של V בלי להקיף את השובל – V חי עם השובל');
+}
 console.log('v8: הולדה בטוחה');
 {
   const g = new Game({ size: 100, rand: seeded(41) });

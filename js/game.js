@@ -250,6 +250,9 @@
     // v8: ראשים של כל השאר לפני הכיבוש (תא עטוף + הבעלים הקודם) – לבדיקת "נכלא"
     var heads = [], onMine = false;
     for (k = 0; k < this.players.length; k++) { var hq = this.players[k]; if (hq !== p && hq.alive) { var hc = this.cellAt(hq.x, hq.y); heads.push(hq, hc, this.owner[hc]); if (this.owner[hc] === id) onMine = true; } }
+    // v9.15: פולשים עם שובל פתוח שעדיין לא "נבלעו" בשטח של הכובש (לפחות תא אחד בשובל/בראש לא שלו)
+    var open = [];
+    for (k = 0; k < this.players.length; k++) { var oq = this.players[k]; if (oq !== p && oq.alive && oq.trail.length && !this.swallowed(oq, id)) open.push(oq); }
     // v9.14: מישהו עומד על שטח שכבר היה של הכובש – שומרים מצב קודם ואת עקבות השובל לבדיקת "בתוך הלולאה"
     var loop = onMine && t.length >= 4 ? { pre: this.owner.slice(), wall: new Uint8Array(this.owner.length), sx: t[0], sy: t[1], ex: t[t.length - 2], ey: t[t.length - 1] } : null;
     for (k = 0; k + 3 < t.length; k += 2) {
@@ -259,7 +262,7 @@
     }
     p.trail = [];
     var comps = this.components(id);
-    if (comps.count <= 1) { this.enclosed(p, heads, loop); this.events.push({ type: 'capture', player: p, cells: 0 }); return 0; }
+    if (comps.count <= 1) { this.enclosed(p, heads, loop, open); this.events.push({ type: 'capture', player: p, cells: 0 }); return 0; }
     var maxSz = 0; for (k = 0; k < comps.count; k++) if (comps.size[k] > maxSz) maxSz = comps.size[k];
     var owner = this.owner, mark = this._mark, base = comps.base, n = owner.length;
     var gained = 0, victims = [], taken = 0, vc = {};
@@ -278,7 +281,7 @@
     }
     this._capBox = gained ? [bx0 - C, by0 - C, bx1 + C, by1 + C] : null;
     var mainVictim = 0; for (var vk in vc) if (!mainVictim || vc[vk] > vc[mainVictim]) mainVictim = +vk;
-    this.enclosed(p, heads, loop);
+    this.enclosed(p, heads, loop, open);
     for (k = 0; k < victims.length; k++) {
       var vp = this.players[victims[k] - 1];
       if (vp.alive && this.counts[vp.id] <= 0) this.kill(vp, p, 'territory');
@@ -290,7 +293,7 @@
   /* v8: מי שהראש שלו נמצא בתא שהפך עכשיו לשל הכובש – נכלא ונפסל (גם אם יש לו שטח במקום אחר).
      v9.9: filled smaller pockets eliminate their occupants; largest exterior is never filled.
      אם הראש נמצא על תא שהשובל עצמו הטביע – התא כבר של הכובש, והיריב נכלא כרגיל. */
-  P.enclosed = function (p, heads, loop) {
+  P.enclosed = function (p, heads, loop, open) {
     var inside = null;
     for (var k = 0; k < heads.length; k += 3) {
       var q = heads[k], c = heads[k + 1];
@@ -302,6 +305,18 @@
       if (!inside) inside = this.loopInterior(p.id, loop);
       if (inside(c)) this.kill(q, p, 'enclosed');
     }
+    // v9.15: פולש עם שובל פתוח (יצא מהשטח שלו ועוד לא סגר). אם אחרי הכיבוש הראש וכל השובל שלו
+    // נמצאים בשטח של הכובש – השורש של השובל נבלע והוא כלוא בתוך השטח, מנותק מהשטח שלו. נכלא ונפסל.
+    // רק אם הכיבוש הזה גרם לזה (לפני הכיבוש לפחות תא אחד לא היה של הכובש) – מי שסתם הולך על השטח לא נפגע.
+    open = open || [];
+    for (var j = 0; j < open.length; j++) if (open[j].alive && this.swallowed(open[j], p.id)) this.kill(open[j], p, 'enclosed');
+  };
+  /* v9.15: האם הראש של q וכל נקודות השובל שלו נמצאים בתאים של id */
+  P.swallowed = function (q, id) {
+    var o = this.owner, t = q.trail;
+    if (o[this.cellAt(q.x, q.y)] !== id) return false;
+    for (var i = 0; i < t.length; i += 2) if (o[this.cellAt(t[i], t[i + 1])] !== id) return false;
+    return true;
   };
   /* v9.14: פנים הלולאה שנסגרה זה עתה. הלולאה = עקבות השובל + הדרך הקצרה ביותר בתוך השטח הקודם של הכובש
      מנקודת הסיום חזרה לנקודת היציאה. מחלקים את שאר המפה (כולל השטח הקודם) לרכיבים (4 שכנים, עוטף);
