@@ -186,6 +186,8 @@
 
   P.kill = function (p, killer, reason) {
     if (!p.alive) return;
+    // v9.13 מצב חיים: הגנה קצרה אחרי חזרה לחיים (invulnUntil מוגדר רק במצב חיים). עזיבה ואובדן כל השטח – תמיד.
+    if (p.invulnUntil && this.tickNo < p.invulnUntil && reason !== 'left' && reason !== 'territory') return;
     p.alive = false; p.deaths++; p.lastTrail = p.trail; p.trail = [];   // v9: השובל האחרון נשמר לאפקט "שבירה"
     if (this.counts[p.id] > 0) {
       var o = this.owner, n = o.length;

@@ -6,7 +6,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------- הגדרות ושיאים ----------
-  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 6, emoji: '', mini: true, vib: true, sens: 'medium', fx: 'full' };
+  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 6, emoji: '', mini: true, vib: true, sens: 'medium', fx: 'full', smode: 'normal' };
   var S = load('kovesh.settings', DEFAULTS);
   if ((S.v || 0) < 4) { S.ctrl = S.joy ? 'joy' : 'point'; if (S.fps < 60) S.fps = 60; S.v = 4; save('kovesh.settings', S); } // מעבר ל-v4
   if ((S.v || 0) < 6) { S.emoji = ''; S.v = 6; save('kovesh.settings', S); } // v6: דמויות אימוג'י – הבחירה הישנה => אקראי
@@ -34,6 +34,9 @@
   var mm = null, mmCtx = null, mmImg = null, mmData = null, mmDirty = false;
   var rgb = [], trailCss = [], darkCss = [], fillCss = [], lineCss = [];
   var camX = 0, camY = 0, effects = [], avatarURLs = [], lastBoardKey = '', startBest = { pct: 0, kills: 0 }, keysHeld = {};
+  var livesStart = 0;        // v9.13 מצב חיים: מספר החיים בהתחלה (0 = רגיל/סיבובים)
+  var livesEnd = null;       // { at: צעד סיום, winners:[ids], tie } – אחרי שהוכרע
+  var spectId = 0, lastLivesKey = '';
   var pits = new Pits();
   var packs = new Packs();   // v9.5 חבילות הפתעה
 
@@ -44,7 +47,7 @@
     el.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S[key] = parse ? parse(b.dataset.v) : b.dataset.v; paint(); save('kovesh.settings', S); });
     paint();
   }
-  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens'); seg('ctrlSeg', 'ctrl'); seg('fxSeg', 'fx');
+  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens'); seg('ctrlSeg', 'ctrl'); seg('fxSeg', 'fx'); seg('soloModeSeg', 'smode');
   $('nameInput').value = S.name;
   $('miniChk').checked = S.mini; $('vibChk').checked = S.vib;
 
@@ -128,6 +131,7 @@
 
   function startGame() {
     mode = 'solo'; match = null; $('timer').classList.add('hidden');
+    livesStart = S.smode === '3' || S.smode === '5' ? Lives.norm(S.smode) : 0;
     S.name = $('nameInput').value.trim(); save('kovesh.settings', S);
     g = new Game({ size: S.size });
     startBest = { pct: BEST.pct, kills: BEST.kills };
@@ -146,6 +150,7 @@
       g.addPlayer({ name: names[b], isBot: true, avatar: av, color: col, emoji: be });
     }
     styleAll();
+    if (livesStart) Lives.init(g.players, livesStart);
     g.spawn(me, { x: g.W / 2, y: g.W / 2 });
     for (var k = 1; k < g.players.length; k++) g.spawn(g.players[k]);
     beginPlay();
@@ -169,6 +174,10 @@
     setupMinimap();
     effects = []; FX.clear(); camX = me.x; camY = me.y; layer = null;
     packs.reset(); pits.reset(); g.pitSystem = pits;
+    if (livesStart) packs.setLives(livesStart);
+    livesEnd = null; spectId = 0; lastLivesKey = '';
+    $('hud').classList.toggle('lives', !!livesStart);
+    updateLivesHud();
     clearPackVisual();
     $('hudAvatar').src = avatarURLs[me.id];
     $('feed').innerHTML = ''; lastBoardKey = '';
@@ -191,23 +200,27 @@
   /* משחק רשת. cfg: { mode:'host'|'client', size, roster:[{name,avatar,color,isBot}], myId, diff, roundMs }
      במארח: סימולציה מלאה. בלקוח: משחק "מראה" שמתעדכן מתמונות המצב (בלי step). */
   function startMatch(cfg) {
-    mode = cfg.mode; match = { diff: cfg.diff || 'easy', roundMs: cfg.roundMs, endTick: 0, msLeft: cfg.roundMs };
+    livesStart = cfg.lives ? Lives.norm(cfg.lives) : 0;
+    mode = cfg.mode; match = { diff: cfg.diff || 'easy', roundMs: cfg.roundMs, endTick: 0, msLeft: cfg.roundMs, lives: livesStart };
     g = new Game({ size: cfg.size });
     cfg.roster.forEach(function (r) { g.addPlayer(r); });
     me = g.players[cfg.myId - 1];
     styleAll();
+    if (livesStart) Lives.init(g.players, livesStart);
     if (mode === 'host') {
       var n = g.players.length;
       for (var k = 0; k < n; k++) { var a = k / n * Math.PI * 2; g.spawn(g.players[k], g.findSpawn() || { x: g.W / 2 + Math.cos(a) * g.W * 0.3, y: g.W / 2 + Math.sin(a) * g.W * 0.3 }); }
-      match.endTick = g.tickNo + Math.round(cfg.roundMs / TICK_MS);
+      // מצב חיים: אין שעון – רק תקרת בטיחות שקטה של 15 דקות
+      match.endTick = g.tickNo + (livesStart ? Lives.SAFETY_TICKS : Math.round(cfg.roundMs / TICK_MS));
     }
-    $('timer').classList.remove('hidden');
+    $('timer').classList.toggle('hidden', !!livesStart);
     beginPlay();
     return g;
   }
   /* הצטרפות באמצע סיבוב (מארח) או עדכון רשימה (לקוח) */
   function addMatchPlayer(r, spawn) {
     var p = g.addPlayer(r); stylePlayer(p);
+    if (livesStart) Lives.initPlayer(p, livesStart);   // מצטרף באמצע: מספר החיים ההתחלתי
     if (spawn) g.spawn(p);
     return p;
   }
@@ -307,15 +320,21 @@
     }
     for (k = 0; k < ps.length; k++) {
       var p = ps[k];
-      if (!p.alive && !p.gone && (p.isBot || mode === 'host')) {
-        if (!p.respawnAt) p.respawnAt = g.tickNo + RESPAWN_TICKS;
-        else if (g.tickNo >= p.respawnAt) { if (g.spawn(p)) p.respawnAt = 0; else p.respawnAt = g.tickNo + 10; }
-      }
+      // מצב חיים: חוזרים רק אם נשארו חיים (וגם האדם בסולו); מצב רגיל – בדיוק כמו קודם
+      if (!p.alive && !p.gone && (p.isBot || mode === 'host' || (livesStart && mode === 'solo')))
+        Lives.respawnStep(g, p, !!livesStart, RESPAWN_TICKS, performance.now());
     }
+    if (livesStart && state === 'play') checkLivesEnd();
     if (mode === 'host') {
       match.msLeft = Math.max(0, (match.endTick - g.tickNo) * TICK_MS);
       if (MPH) MPH.onTick();
-      if (g && g.tickNo >= match.endTick && state === 'play' && MPH) MPH.roundOver();
+      if (g && state === 'play' && MPH) {
+        if (livesEnd && g.tickNo >= livesEnd.at) MPH.roundOver();
+        else if (g.tickNo >= match.endTick) {
+          if (livesStart && !livesEnd) livesEnd = { at: g.tickNo, winners: Lives.safetyWinners(g.players, function (q) { return Awards.roundPeak(q.bestPct, g.pct(q)); }).map(function (q) { return q.id; }), safety: true };
+          MPH.roundOver();
+        }
+      }
     }
   }
 
@@ -327,10 +346,12 @@
     }
     if (ev.type === 'death') {
       var v = ev.victim;
+      if (livesStart && mode !== 'client') { if (ev.reason === 'left') v.lives = 0; else Lives.onDeath(v, g.tickNo); pushLives(); }
       fxDeath(v, ev.killer, ev.reason, ev.box);
       if (mode === 'host' && MPH) MPH.onEvent(ev);
-      if (v === me && mode === 'solo') { gameOver(ev); return; }
+      if (v === me && mode === 'solo' && Lives.soloGameOver(me, !!livesStart)) { gameOver(ev); return; }
       if (v === me) { myDeath(ev); return; }
+      if (livesStart && v.lives <= 0 && ev.reason !== 'left') { feed(nm(v) + ' הודח/ה 💀'); return; }
       if (ev.reason === 'pit') { feed(nm(v) + ' נפל/ה לבור מלכודת 🌋'); return; }
       if (ev.reason === 'left') { feed(nm(v) + ' עזב/ה את המשחק'); return; }
       if (ev.reason === 'enclosed') { feed(nm(v) + ' נכלא/ה בשטח של ' + (ev.killer === me ? 'אותך' : nm(ev.killer)) + (ev.killer === me ? '! ⚔️' : '')); return; }
@@ -341,7 +362,51 @@
   function myDeath(ev) {
     buzz(150);
     var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש', enclosed: 'נכלאת בשטח', pit: 'נפלת לבור מלכודת 🌋' };
-    feed('נפסלת (' + (reasons[ev.reason] || '') + (ev.killer ? ' – ' + nm(ev.killer) : '') + ') · חוזרים בעוד 3 שניות');
+    var why = (reasons[ev.reason] || '') + (ev.killer ? ' – ' + nm(ev.killer) : '');
+    me.diedAt = performance.now();
+    if (livesStart && (me.lives || 0) <= 0) { feed('הודחת! (' + why + ') · צופים עד הסוף'); updateLivesHud(); return; }
+    feed('נפסלת (' + why + ') · חוזרים בעוד 3 שניות');
+    updateLivesHud();
+  }
+
+  /* ---------- v9.13 מצב חיים ---------- */
+  function checkLivesEnd() {
+    if (livesEnd || mode === 'client') return;
+    var r = Lives.matchOver(g.players);
+    if (!r.over) return;
+    livesEnd = { at: g.tickNo + Lives.END_DELAY, winners: r.winners.map(function (p) { return p.id; }), tie: r.tie };
+    if (mode === 'solo') {
+      if (livesEnd.winners.indexOf(me.id) >= 0) soloWin();
+    }
+  }
+  function pushLives() { if (mode === 'host' && MPH && MPH.onLives) MPH.onLives(); lastLivesKey = ''; }
+  /* לקוח: מספרי החיים מהמארח */
+  function applyLives(n, list) {
+    if (!g) return;
+    if (n && !livesStart) livesStart = Lives.norm(n);
+    for (var i = 0; i < g.players.length && i < (list || []).length; i++) g.players[i].lives = +list[i] || 0;
+    lastLivesKey = '';
+    updateLivesHud();
+  }
+  function spectTarget() {
+    var t = spectId ? g.players[spectId - 1] : null;
+    if (t && t.alive) return t;
+    t = null;
+    for (var k = 0; k < g.players.length; k++) { var q = g.players[k]; if (q.alive && q !== me && (!t || g.counts[q.id] > g.counts[t.id])) t = q; }
+    spectId = t ? t.id : 0;
+    return t;
+  }
+  function updateLivesHud() {
+    var ml = $('myLives'), lm = $('lifeMsg');
+    if (!livesStart || !g || !me) { if (ml) ml.classList.add('hidden'); if (lm) lm.classList.add('hidden'); return; }
+    var n = me.lives || 0;
+    ml.classList.remove('hidden'); ml.textContent = Lives.hearts(n, livesStart);
+    var txt = '';
+    if (!me.alive && state === 'play') {
+      if (n <= 0) txt = 'הודחת · צופים במשחק 👀';
+      else { var left = Math.max(1, Math.ceil(3 - (performance.now() - (me.diedAt || 0)) / 1000)); txt = 'חוזר בעוד ' + left + '… ' + Lives.hearts(n, livesStart); }
+    }
+    lm.textContent = txt; lm.classList.toggle('hidden', !txt);
   }
   function nm(p) { return (p.emoji ? p.emoji + ' ' : '') + p.name; }
   function feed(msg) {
@@ -356,11 +421,18 @@
     if (mode === 'host' && MPH && MPH.onPack) MPH.onPack(ev);
     if (ev.type === 'pick') {
       var fx = Packs.effect(ev.effectId), who = g.players[ev.playerId - 1];
+      if (ev.effectId === 'life') { lifePicked(who); pushLives(); return; }
       if (who === me && fx) showPackPickup(fx);
     } else if (ev.type === 'end' && +ev.playerId === me.id) {
       clearPackVisual();
       var pfx = $('packFx'); if (pfx) pfx.classList.add('hidden');
     }
+  }
+  function lifePicked(who) {
+    if (!who) return;
+    feed(who === me ? 'קיבלת חיים נוספים ❤️' : nm(who) + ' קיבל/ה חיים נוספים ❤️');
+    if (who === me) { buzz(25); var ml = $('myLives'); if (ml) { ml.classList.remove('pop'); void ml.offsetWidth; ml.classList.add('pop'); } }
+    lastLivesKey = ''; updateLivesHud();
   }
   function showPackPickup(fx) {
     feed(fx.emoji + ' ' + fx.name);
@@ -394,7 +466,8 @@
   }
   function onPackNet(ev) {
     // אירועי רשת מהמארח (לקוח)
-    if (ev.a === 'spawn') packs.clientSpawn(ev.id, ev.x, ev.y);
+    if (ev.a === 'spawn') packs.clientSpawn(ev.id, ev.x, ev.y, ev.k);
+    else if (ev.a === 'pick' && ev.e === 'life') { packs.clientPick(g, ev.id, ev.pid, ev.e); lifePicked(g.players[ev.pid - 1]); }
     else if (ev.a === 'pick') {
       var fx = packs.clientPick(g, ev.id, ev.pid, ev.e);
       if (ev.pid === me.id && fx) showPackPickup(fx);
@@ -500,6 +573,10 @@
     }
     // מצלמה רציפה: נעה בהפרש העטוף הקצר, כך שבחציית תפר אין קפיצה (camX יכול לצאת מ-[0,W))
     if (me.alive) { camX += g.wd(me.rx - camX); camY += g.wd(me.ry - camY); }
+    else if (livesStart && (me.lives || 0) <= 0) {   // מודח: המצלמה עוקבת בעדינות אחרי שחקן שעוד במשחק
+      var sp = spectTarget();
+      if (sp) { camX += g.wd(sp.rx - camX) * 0.08; camY += g.wd(sp.ry - camY) * 0.08; }
+    }
     var vx0 = camX - cw / 2 / unitPx, vy0 = camY - ch / 2 / unitPx, vw = cw / unitPx, vh = ch / unitPx;
     var margin = 8;
     if (!layer || vx0 < layerX || vy0 < layerY || vx0 + vw > layerX + layer.width / unitPx || vy0 + vh > layerY + layer.height / unitPx) {
@@ -558,7 +635,7 @@
         for (var pa = 0; pa < pyo.length; pa++) for (var pb = 0; pb < pxo.length; pb++) {
           var phx = (pwx + pxo[pb] - vx0) * unitPx, phy = (pwy + pyo[pa] - vy0) * unitPx;
           if (phx < -40 || phy < -40 || phx > cw + 40 || phy > ch + 40) continue;
-          ctx.fillText(Packs.ICON, phx, phy);
+          ctx.fillText(pk.kind === 'life' ? Packs.HEART_ICON : Packs.ICON, phx, phy);
         }
       }
     }
@@ -583,9 +660,16 @@
       // העותק הקרוב למצלמה, ועוד עותקים אם השחקן ליד תפר ונראה פעמיים (מפה קטנה/מסך רחב)
       var wx = camX + g.wd(p.rx - camX), wy = camY + g.wd(p.ry - camY), pad = 2 * size / unitPx;
       var px2 = images(wx - pad, wx + pad, vx0, vx0 + vw), py2 = images(wy - pad, wy + pad, vy0, vy0 + vh);
+      var prot = livesStart && p.protMs && now < p.protMs;   // v9.13: הגנה אחרי חזרה – הבהוב + טבעת
       for (var a3 = 0; a3 < py2.length; a3++) for (var b4 = 0; b4 < px2.length; b4++) {
         var hx = (wx + px2[b4] - vx0) * unitPx, hy = (wy + py2[a3] - vy0) * unitPx;
+        if (prot) {
+          ctx.globalAlpha = Math.floor(now / 130) % 2 ? 0.45 : 1;
+          ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = Math.max(2, unitPx * 0.14);
+          ctx.beginPath(); ctx.arc(hx, hy, size * 0.62, 0, Math.PI * 2); ctx.stroke();
+        }
         Emoji.draw(ctx, p.emoji, p.color, lineCss[p.id], hx, hy, size, p.rh);
+        if (prot) ctx.globalAlpha = 1;
         ctx.lineWidth = Math.max(2, fontPx * 0.3); ctx.strokeStyle = 'rgba(255,255,255,.85)';
         ctx.strokeText(p.name, hx, hy - size * 0.62);
         ctx.fillStyle = '#3b4252'; ctx.fillText(p.name, hx, hy - size * 0.62);
@@ -602,9 +686,19 @@
     $('pct').textContent = g.pct(me).toFixed(1) + '%';
     $('kills').textContent = '⚔️ ' + me.kills;
     updatePackHud();
-    var list = g.players.filter(function (p) { return p.alive && !p.gone; }).sort(function (a, b) { return g.counts[b.id] - g.counts[a.id]; }).slice(0, 5);
-    if (me.alive && list.indexOf(me) < 0) list.push(me);
-    var key = list.map(function (p) { return p.id + ':' + g.pct(p).toFixed(1); }).join(',');
+    var list;
+    if (livesStart) {
+      // מצב חיים: כל מי שבמשחק, כולל מודחים (מעומעמים בסוף הרשימה)
+      list = g.players.filter(function (p) { return !p.gone; }).sort(function (a, b) {
+        var ao = (a.lives || 0) <= 0, bo = (b.lives || 0) <= 0;
+        return (ao - bo) || (g.counts[b.id] - g.counts[a.id]);
+      });
+      updateLivesHud();
+    } else {
+      list = g.players.filter(function (p) { return p.alive && !p.gone; }).sort(function (a, b) { return g.counts[b.id] - g.counts[a.id]; }).slice(0, 5);
+      if (me.alive && list.indexOf(me) < 0) list.push(me);
+    }
+    var key = list.map(function (p) { return p.id + ':' + g.pct(p).toFixed(1) + (livesStart ? ':' + p.lives + (p.alive ? 'a' : 'd') : ''); }).join(',');
     if (key !== lastBoardKey || force) {
       lastBoardKey = key;
       // v9: נקודת צבע השטח ליד כל שם (נבנה ב-DOM: ה-CSP חוסם style בתוך HTML)
@@ -615,6 +709,13 @@
         var em = document.createElement('span'); em.className = 'emo-s'; em.textContent = p.emoji;
         var pc = document.createElement('span'); pc.className = 'p'; pc.textContent = g.pct(p).toFixed(1) + '%';
         li.appendChild(dot); li.appendChild(em); li.appendChild(document.createTextNode(p.name)); li.appendChild(pc);
+        if (livesStart) {
+          var out = (p.lives || 0) <= 0;
+          var lv = document.createElement('span'); lv.className = 'lv'; lv.textContent = out ? '💀' : '❤️' + p.lives;
+          li.appendChild(lv);
+          if (out) { li.classList.add('out'); pc.textContent = ''; }
+          else if (!p.alive) li.classList.add('wait');
+        }
         li.style.borderInlineStartColor = lineCss[p.id] || p.color;
         board.appendChild(li);
       });
@@ -652,12 +753,14 @@
     clearPackVisual(); packs.reset();
     if (mode !== 'solo' && MPH) MPH.leave();
     mode = 'solo'; match = null; $('timer').classList.add('hidden');
+    livesStart = 0; livesEnd = null; $('hud').classList.remove('lives');
     state = 'menu'; stopLoop(); g = null;
     $('hud').classList.add('hidden'); $('joyBase').classList.add('hidden');
     ctx.fillStyle = '#eceff4'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     showBest(); show('menu');
   }
   function gameOver(ev) {
+    if (livesStart && state !== 'play') return;   // כבר הוכרע (ניצחון) – לא דורסים
     clearPackVisual(); packs.reset();
     state = 'dying';
     if (S.vib && navigator.vibrate) try { navigator.vibrate(180); } catch (e) {}
@@ -672,13 +775,38 @@
     $('overAvatar').src = Emoji.dataURL(me.emoji, 160, me.color, lineCss[me.id]);
     $('overPct').textContent = best.toFixed(1) + '%';
     $('overKills').textContent = kills;
-    $('overTitle').textContent = (best > startBest.pct || kills > startBest.kills) ? 'שיא חדש! 🏆' : 'נפסלת!';
+    $('overTitle').textContent = (best > startBest.pct || kills > startBest.kills) ? 'שיא חדש! 🏆' : (livesStart ? 'הודחת!' : 'נפסלת!');
+    if (livesStart) $('overReason').textContent = 'נגמרו החיים' + (r ? ' · ' + r : '');
+    $('overCard').classList.remove('win');
     showBest();
     // ממשיכים לצייר רגע קט בשביל האפקט, ואז עוצרים הכול
     setTimeout(function () {
       if (state !== 'dying') return;
       state = 'over'; stopLoop(); show('over'); $('joyBase').classList.add('hidden');
     }, 900);
+  }
+
+  /* v9.13 סולו במצב חיים: נשארת אחרון/ה עם חיים – ניצחון */
+  function soloWin() {
+    clearPackVisual();
+    state = 'dying';
+    buzz(60);
+    var kills = me.kills, best = me.bestPct;
+    if (best > BEST.pct) BEST.pct = best;
+    if (kills > BEST.kills) BEST.kills = kills;
+    save('kovesh.best', BEST);
+    $('overTitle').textContent = 'ניצחת! 🏆';
+    $('overReason').textContent = 'נשארת אחרון/ה בזירה · ' + Lives.hearts(me.lives, livesStart);
+    $('overAvatar').src = Emoji.dataURL(me.emoji, 160, me.color, lineCss[me.id]);
+    $('overPct').textContent = best.toFixed(1) + '%';
+    $('overKills').textContent = kills;
+    $('overCard').classList.add('win');
+    showBest();
+    setTimeout(function () {
+      if (state !== 'dying') return;
+      packs.reset();
+      state = 'over'; stopLoop(); show('over'); $('joyBase').classList.add('hidden');
+    }, 1200);
   }
 
   // חיסכון בסוללה: כשהדף מוסתר – עוצרים הכול ומשהים
@@ -773,9 +901,10 @@
     setState: function (st) { state = st; }, resize: resize,
     get game() { return g; }, get me() { return me; }, get state() { return state; }, get mode() { return mode; }, get match() { return match; },
     get pits() { return pits; }, get packs() { return packs; }, onPackNet: onPackNet, clearPackVisual: clearPackVisual,
+    get livesStart() { return livesStart; }, get livesEnd() { return livesEnd; }, applyLives: applyLives,
     TICK_MS: TICK_MS
   };
   // חשיפה לבדיקות אוטומטיות בלבד
   window.__evBooted = true;
-  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get pits() { return pits; }, get packs() { return packs; }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
+  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get pits() { return pits; }, get packs() { return packs; }, get livesStart() { return livesStart; }, get livesEnd() { return livesEnd; }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
 })();

@@ -188,3 +188,19 @@ html.safe .card>*{margin:6px 0}
 #rankList .round-stat{font-variant-numeric:tabular-nums;white-space:nowrap}
 #rankList .tot-stat{font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums}
 #rankList .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* v9.13 מצב חיים */
+#myLives{display:block;font-size:13px;letter-spacing:-1px;line-height:1.2;transform-origin:center}
+#myLives.pop{animation:lvpop .5s ease-out}
+@keyframes lvpop{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
+#board li .lv{font-size:11px;padding-inline-start:6px;font-variant-numeric:tabular-nums}
+#board li.out{opacity:.45}
+#board li.wait{opacity:.7}
+#lifeMsg{position:absolute;top:30%;left:50%;transform:translateX(-50%);background:rgba(251,252,254,.92);color:#3b4252;border:1px solid rgba(76,86,106,.18);border-radius:14px;padding:6px 14px;font-weight:800;font-size:16px;white-space:nowrap;box-shadow:0 4px 14px rgba(46,52,64,.12)}
+#hud.lives #timer{display:none}
+.winner{margin:0;font-weight:800;font-size:clamp(15px,2.8dvh,19px);color:#7a5a12;background:#fff1c9;border-radius:12px;padding:clamp(3px,.8dvh,7px) 10px}
+#rankList li.win{background:#fff1c9}
+#rankList .lv{font-size:clamp(11px,1.9dvh,13px);white-space:nowrap}
+#overCard.win h2{color:#7a5a12}
+/* v9.13: שורת "מצב משחק" נוספה ללובי – מפצים בגובה: "בלי בוטים" בשורה אחת */
+#mpBotsSeg button{white-space:nowrap}
+#mpBotsSeg button[data-v="0"]{flex:1.9;font-size:clamp(11px,1.9dvh,14px)}

@@ -15,7 +15,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=20261112101537">
+<link rel="stylesheet" href="style.css?v=20261112104224">
 </head>
 <body>
 <div id="bootFail" class="hidden"><div class="bootcard"><b>הדפדפן לא נתמך – פתחו ב-Chrome</b><p>אם פתחתם מוואטסאפ: ⋮ ← „פתח בדפדפן“ / Chrome. אם זה עדיין תקוע – עדכנו את Chrome ו-Android System WebView.</p><pre id="bootErr"></pre></div></div>
@@ -26,13 +26,14 @@
 
 <!-- HUD -->
 <div id="hud" class="hidden">
-  <div id="stats"><img id="hudAvatar" alt=""><div><b id="pct">0.0%</b><span id="kills">⚔️ 0</span></div></div>
+  <div id="stats"><img id="hudAvatar" alt=""><div><b id="pct">0.0%</b><span id="kills">⚔️ 0</span><span id="myLives" class="hidden"></span></div></div>
   <ol id="board"></ol>
   <button id="pauseBtn" class="iconbtn" aria-label="השהה">❚❚</button>
   <canvas id="minimap" width="110" height="110"></canvas>
   <div id="feed"></div>
   <div id="packFx" class="hidden"><span id="packFxIcon"></span> <span id="packFxName"></span> <span id="packFxSec"></span></div>
   <div id="timer" class="hidden">3:00</div>
+  <div id="lifeMsg" class="hidden"></div>
 </div>
 <div id="joyBase" class="hidden"><div id="joyKnob"></div></div>
 
@@ -50,6 +51,8 @@
     <div class="seg" id="diffSeg">
       <button data-v="easy">קל</button><button data-v="normal">רגיל</button><button data-v="hard">קשה</button>
     </div>
+    <div class="label">מצב משחק</div>
+    <div class="seg" id="soloModeSeg"><button data-v="normal">רגיל</button><button data-v="3">חיים ×3</button><button data-v="5">חיים ×5</button></div>
     </div>
     <div class="col">
     <button id="playBtn" class="primary">שחק ▶</button>
@@ -105,6 +108,7 @@
       <li>מי שהראש שלו בתוך לולאה שנסגרה – נכלא ונפסל, גם אם יש לו שטח במקום אחר.</li>
       <li>אפקטים: לכל סוג פסילה אפקט משלו, ולכיבוש גדול של שטח תפוס יש גל צבע ו"+%". אפשר להפחית או לכבות בהגדרות.</li>
       <li>ראש בראש: מי שבתוך השטח שלו שורד; מחוץ לשטח – בעל השובל הארוך נפסל.</li>
+      <li><b>מצב חיים:</b> כל פסילה מורידה ❤️ אחד; חוזרים עם הגנה קצרה (הבהוב). בלי חיים – בחוץ. האחרון שנשאר מנצח. ❤️ במפה = חיים נוספים.</li>
       <li><b>טלפון:</b> נוגעים במסך בכיוון שאליו רוצים לנוע – הדמות (במרכז המסך) פונה אל האצבע. אפשר להחליק את האצבע כדי לנווט; כשמרימים, הכיוון נשמר. (גרירה או ג'ויסטיק – בהגדרות.)</li>
       <li><b>מקלדת:</b> חיצים לכיוון (גם באלכסון), A/D לסיבוב, ‏P/Esc להשהיה.</li>
     </ul>
@@ -123,7 +127,7 @@
 
 <!-- סוף משחק -->
 <section id="over" class="screen hidden">
-  <div class="card small">
+  <div class="card small" id="overCard">
     <img id="overAvatar" class="bigav" alt="">
     <h2 id="overTitle">נפסלת!</h2>
     <p id="overReason" class="sub"></p>
@@ -172,8 +176,12 @@
       <div class="seg" id="mpBotsSeg"><button data-v="0">בלי בוטים</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button><button data-v="6">6</button></div>
       <div class="label">רמת הבוטים</div>
       <div class="seg" id="mpDiffSeg"><button data-v="easy">קל</button><button data-v="normal">רגיל</button><button data-v="hard">קשה</button></div>
-      <div class="label">אורך סיבוב</div>
+      <div class="label">מצב משחק</div>
+      <div class="seg" id="mpModeSeg"><button data-v="rounds">סיבובים</button><button data-v="lives">חיים ❤️</button></div>
+      <div class="label" id="mpTimeLabel">אורך סיבוב</div>
       <div class="seg" id="mpTimeSeg"><button data-v="2">2 דק'</button><button data-v="3">3 דק'</button><button data-v="5">5 דק'</button></div>
+      <div class="label hidden" id="mpLivesLabel">חיים</div>
+      <div class="seg hidden" id="mpLivesSeg"><button data-v="3">3 ❤️</button><button data-v="5">5 ❤️</button></div>
     </div>
     <button id="startBtn" class="primary">התחל ▶</button>
     <p id="startHint" class="sub"></p>
@@ -188,6 +196,7 @@
 <section id="results" class="screen hidden">
   <div class="card small">
     <h2>סוף הסיבוב ב-<span dir="ltr">Emojiverse</span> 🏁<span id="roundTag"></span></h2>
+    <p id="winnerLine" class="winner hidden"></p>
     <div id="awardsRow" class="awards-row"></div>
     <ol id="rankList"></ol>
     <button id="againRoundBtn" class="primary">עוד סיבוב ↻</button>
@@ -206,20 +215,21 @@
   </div>
 </section>
 
-<script src="js/version.js?v=20261112101537"></script>
-<script src="js/boot.js?v=20261112101537"></script>
-<script src="js/game.js?v=20261112101537"></script>
-<script src="js/ai.js?v=20261112101537"></script>
-<script src="js/terrain.js?v=20261112101537"></script>
-<script src="js/input.js?v=20261112101537"></script>
-<script src="js/avatars.js?v=20261112101537"></script>
-<script src="js/emoji.js?v=20261112101537"></script>
-<script src="js/fx.js?v=20261112101537"></script>
-<script src="js/pits.js?v=20261112101537"></script>
-<script src="js/packs.js?v=20261112101537"></script>
-<script src="js/net.js?v=20261112101537"></script>
-<script src="js/awards.js?v=20261112101537"></script>
-<script src="js/main.js?v=20261112101537"></script>
-<script src="js/mp.js?v=20261112101537"></script>
+<script src="js/version.js?v=20261112104224"></script>
+<script src="js/boot.js?v=20261112104224"></script>
+<script src="js/game.js?v=20261112104224"></script>
+<script src="js/ai.js?v=20261112104224"></script>
+<script src="js/terrain.js?v=20261112104224"></script>
+<script src="js/input.js?v=20261112104224"></script>
+<script src="js/avatars.js?v=20261112104224"></script>
+<script src="js/emoji.js?v=20261112104224"></script>
+<script src="js/fx.js?v=20261112104224"></script>
+<script src="js/pits.js?v=20261112104224"></script>
+<script src="js/packs.js?v=20261112104224"></script>
+<script src="js/net.js?v=20261112104224"></script>
+<script src="js/awards.js?v=20261112104224"></script>
+<script src="js/lives.js?v=20261112104224"></script>
+<script src="js/main.js?v=20261112104224"></script>
+<script src="js/mp.js?v=20261112104224"></script>
 </body>
 </html>

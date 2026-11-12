@@ -14,6 +14,7 @@ node test/packs.test.js >/dev/null || { echo "בדיקות החבילות נכש
 node test/fill.test.js >/dev/null || { echo "בדיקות המילוי נכשלו – לא פורסים"; exit 1; }
 node test/terrain.test.js >/dev/null || { echo "בדיקות הקונטור נכשלו – לא פורסים"; exit 1; }
 node test/pits.test.js >/dev/null || { echo "בדיקות הבורות נכשלו – לא פורסים"; exit 1; }
+node test/lives.test.js >/dev/null || { echo "בדיקות מצב חיים נכשלו – לא פורסים"; exit 1; }
 /home/box/factory/tools/.venv/bin/python test/terrain_render_test.py >/dev/null || { echo "בדיקת ציור השטח נכשלה – לא פורסים"; exit 1; }
 STAMP=$(date +%Y%m%d%H%M%S)
 # גרסת אפליקציה: מעלים את המספר המשני בכל פריסה (./deploy.sh --no-bump כדי לא להעלות)
@@ -34,7 +35,7 @@ for i in $(seq 1 60); do
   if curl -s "$PAGES_URL/sw.js" | grep -q "emojiverse-${STAMP}"; then echo "Pages מעודכן"; break; fi
   sleep 5
 done
-for f in "" manifest.webmanifest sw.js icons/icon-512.png js/mp.js js/net.js js/vendor/peerjs.min.js; do
+for f in "" manifest.webmanifest sw.js icons/icon-512.png js/mp.js js/net.js js/lives.js js/packs.js js/vendor/peerjs.min.js; do
   printf '%s %s\n' "$(curl -s -o /dev/null -w '%{http_code}' "$PAGES_URL/$f")" "$PAGES_URL/$f"
 done
 

@@ -48,7 +48,7 @@
   var role = null;            // 'host' | 'client' | null
   var peer = null, code = '', leaving = false, overlayOn = false;
   // מארח
-  var humans = [], cfg = { bots: 2, diff: 'easy', minutes: 3 }, tracker = null, inGame = false, lastRank = null;
+  var humans = [], cfg = { bots: 2, diff: 'easy', minutes: 3, mode: 'rounds', lives: 3 }, tracker = null, inGame = false, lastRank = null;
   var matchTotals = Awards.empty(), matchRound = 0, lastResults = null;
   function resetMatchScore() { matchTotals = Awards.empty(); matchRound = 0; lastResults = null; lastRank = null; }
   // לקוח
@@ -114,7 +114,7 @@
       cfg[key] = parse ? parse(b.dataset.v) : b.dataset.v; pushLobby();
     });
   }
-  segBind('mpBotsSeg', 'bots', Number); segBind('mpDiffSeg', 'diff'); segBind('mpTimeSeg', 'minutes', Number);
+  segBind('mpBotsSeg', 'bots', Number); segBind('mpDiffSeg', 'diff'); segBind('mpTimeSeg', 'minutes', Number); segBind('mpModeSeg', 'mode'); segBind('mpLivesSeg', 'lives', Number);
   $('shareBtn').onclick = function () {
     var url = shareURL(), text = Net.shareText(code, url);
     if (navigator.share) navigator.share({ title: 'Emojiverse – משחק אונליין', text: text }).catch(function () {});
@@ -152,9 +152,14 @@
     $('lobbyCount').textContent = L.players.length + '/' + MAX_HUMANS;
     // הגדרות
     $('hostCfg').classList.toggle('readonly', !isHost);
-    [['mpBotsSeg', 'bots'], ['mpDiffSeg', 'diff'], ['mpTimeSeg', 'minutes']].forEach(function (x) {
-      [].forEach.call($(x[0]).children, function (b) { b.classList.toggle('on', String(L.cfg[x[1]]) === b.dataset.v); b.disabled = !isHost; });
+    var lc = { bots: L.cfg.bots, diff: L.cfg.diff, minutes: L.cfg.minutes, mode: L.cfg.mode === 'lives' ? 'lives' : 'rounds', lives: Lives.norm(L.cfg.lives) };
+    [['mpBotsSeg', 'bots'], ['mpDiffSeg', 'diff'], ['mpTimeSeg', 'minutes'], ['mpModeSeg', 'mode'], ['mpLivesSeg', 'lives']].forEach(function (x) {
+      [].forEach.call($(x[0]).children, function (b) { b.classList.toggle('on', String(lc[x[1]]) === b.dataset.v); b.disabled = !isHost; });
     });
+    // v9.13: במצב חיים שורת "אורך סיבוב" מתחלפת בשורת "חיים" (לא נערמות – הלובי נשאר בלי גלילה)
+    var lv = lc.mode === 'lives';
+    $('mpTimeLabel').classList.toggle('hidden', lv); $('mpTimeSeg').classList.toggle('hidden', lv);
+    $('mpLivesLabel').classList.toggle('hidden', !lv); $('mpLivesSeg').classList.toggle('hidden', !lv);
     $('startBtn').classList.toggle('hidden', !isHost);
     $('waitHost').classList.toggle('hidden', isHost);
     $('startBtn').disabled = L.players.length + L.cfg.bots < 2;
@@ -313,11 +318,12 @@
     }
     humans.forEach(function (h, k) { h.pid = k + 1; });
     var size = list.length <= 3 ? 80 : list.length <= 7 ? 100 : 130;    // מפה לפי מספר המשתתפים
-    var roundMs = cfg.minutes * 60000;
-    var g = Core.startMatch({ mode: 'host', size: size, roster: list, myId: 1, diff: cfg.diff, roundMs: roundMs });
+    var roundMs = cfg.minutes * 60000, lives = cfg.mode === 'lives' ? Lives.norm(cfg.lives) : 0;
+    var g = Core.startMatch({ mode: 'host', size: size, roster: list, myId: 1, diff: cfg.diff, roundMs: roundMs, lives: lives });
     tracker = new Net.Tracker(g); inGame = true; lastRank = null;
-    humans.forEach(function (h) { if (h.conn) send(h.conn, { t: 'start', size: size, roster: roster(g), you: h.pid, roundMs: roundMs, diff: cfg.diff, packs: Core.packs.publicList(), pits: Core.pits.publicList() }); });
+    humans.forEach(function (h) { if (h.conn) send(h.conn, { t: 'start', size: size, roster: roster(g), you: h.pid, roundMs: roundMs, diff: cfg.diff, lives: lives, packs: Core.packs.publicList(), pits: Core.pits.publicList() }); });
     broadcast({ t: 'pit', list: Core.pits.publicList() });
+    if (lives) hooks.onLives();
     broadcast(Net.encodeSnap(g, tracker, roundMs, false));
   }
   function joinMidGame(h) {
@@ -326,7 +332,8 @@
     var p = Core.addMatchPlayer({ name: h.name, avatar: h.avatar, emoji: h.emoji && usedNow.indexOf(h.emoji) < 0 ? h.emoji : Emoji.randomFree(usedNow), color: Avatars.list[h.avatar].color, isBot: false, key: h.key }, true);
     h.pid = p.id;
     humans.forEach(function (o) { if (o.conn && o !== h) send(o.conn, { t: 'roster', roster: roster(g) }); });
-    send(h.conn, { t: 'start', size: g.W, roster: roster(g), you: h.pid, roundMs: Core.match.roundMs, diff: cfg.diff, mid: true, packs: Core.packs.publicList(), pits: Core.pits.publicList() });
+    send(h.conn, { t: 'start', size: g.W, roster: roster(g), you: h.pid, roundMs: Core.match.roundMs, diff: cfg.diff, lives: Core.livesStart, mid: true, packs: Core.packs.publicList(), pits: Core.pits.publicList() });
+    if (Core.livesStart) hooks.onLives();
     send(h.conn, Net.encodeSnap(g, new Net.Tracker(g), Core.match.msLeft, Core.state === 'paused'));
     if (Core.state === 'paused') send(h.conn, { t: 'pause', why: 'bg' });
     Core.feed(h.name + ' הצטרף/ה');
@@ -346,12 +353,18 @@
     },
     // v9.5: חבילות – t:'pack' (לקוחות ישנים מתעלמים מטיפוס לא מוכר)
     onPack: function (ev) {
-      if (ev.type === 'spawn') broadcast({ t: 'pack', a: 'spawn', id: ev.pack.id, x: Math.round(ev.pack.x * 100) / 100, y: Math.round(ev.pack.y * 100) / 100 });
+      if (ev.type === 'spawn') { var sm = { t: 'pack', a: 'spawn', id: ev.pack.id, x: Math.round(ev.pack.x * 100) / 100, y: Math.round(ev.pack.y * 100) / 100 }; if (ev.pack.kind === 'life') sm.k = 'life'; broadcast(sm); }
       else if (ev.type === 'pick') broadcast({ t: 'pack', a: 'pick', id: ev.packId, pid: ev.playerId, e: ev.effectId });
       else if (ev.type === 'end') broadcast({ t: 'pack', a: 'end', pid: ev.playerId });
     },
+    // v9.13: מספרי החיים – הודעה אמינה נפרדת (תמונת המצב הבינארית לא השתנתה)
+    onLives: function () {
+      var g = Core.game; if (!g || !Core.livesStart) return;
+      broadcast({ t: 'lives', n: Core.livesStart, l: g.players.map(function (p) { return p.lives || 0; }) });
+    },
     roundOver: function () {
-      var g = Core.game; lastRank = Net.ranking(g);
+      var g = Core.game, lv = Core.livesStart;
+      lastRank = lv ? livesRanking(g) : Net.ranking(g);
       var entries = g.players.map(function (p) {
         return { key: p.key, name: p.name, emoji: p.emoji, avatar: p.avatar, color: p.color, isBot: p.isBot, kills: p.kills, pct: +g.pct(p).toFixed(1), peak: Awards.roundPeak(p.bestPct, g.pct(p)), deaths: p.deaths || 0, gone: !!p.gone };
       });
@@ -361,6 +374,7 @@
       var presentKeys = lastRank.map(function (r) { return r.key; }).filter(Boolean);
       var totalsList = Awards.present(matchTotals, presentKeys);
       lastResults = { t: 'results', rank: lastRank, totals: totalsList, awards: Awards.awards(totalsList), round: matchRound };
+      if (lv) { lastResults.lives = lv; lastResults.win = lastRank.filter(function (r) { return r.win; }).map(function (r) { return { name: r.name, emoji: r.emoji }; }); }
       Core.endRound();
       broadcast(Net.encodeSnap(g, tracker, 0, false));
       broadcast(lastResults);
@@ -374,6 +388,14 @@
     leave: function () { leave(); }
   };
   Core.attach(hooks);
+  /* דירוג במצב חיים: האחרון שנשאר ראשון, אחר כך מי ששרד יותר זמן, הריגות, שיא שטח (לא השטח בסוף) */
+  function livesRanking(g) {
+    var le = Core.livesEnd, win = le && le.winners ? le.winners : Lives.matchOver(g.players).winners.map(function (p) { return p.id; });
+    return Lives.rankRows(g.players.filter(function (p) { return !p.gone; }).map(function (p) {
+      var pk = Awards.roundPeak(p.bestPct, g.pct(p));
+      return { id: p.id, name: p.name, emoji: p.emoji, avatar: p.avatar, color: p.color, isBot: p.isBot, pct: pk, best: pk, kills: p.kills, peak: pk, lives: p.lives || 0, lastDeathTick: p.lastDeathTick || 0, win: win.indexOf(p.id) >= 0 };
+    }));
+  }
 
   function showResults(payload) {
     var rank = payload, awards = { kills: [], territory: [], double: [], undefeated: [] }, totals = [], round = 0;
@@ -397,6 +419,13 @@
     if (awards.undefeated && awards.undefeated.length > 1 && awards.undefeated.length >= nPresent) {
       var all = document.createElement('div'); all.className = 'award-chip'; all.textContent = '🛡️ בלתי מנוצחים: כולם'; box.appendChild(all);
     } else chip('🛡️', 'בלתי מנוצח', awards.undefeated);
+    // v9.13 מצב חיים: שורת מנצח ברורה
+    var wl = $('winnerLine'), win = payload && payload.lives ? (payload.win || []) : [];
+    if (win.length) {
+      var names = win.map(function (p) { return (p.emoji ? p.emoji + ' ' : '') + p.name; }).join(' · ');
+      wl.textContent = win.length > 1 ? '🤝 תיקו: ' + names : '🏆 המנצח/ת: ' + names;
+    }
+    wl.classList.toggle('hidden', !win.length);
     var tag = $('roundTag');
     tag.textContent = round > 1 ? ' · אחרי ' + round + ' סיבובים' : (round === 1 ? ' · סיבוב 1' : '');
     var ol = $('rankList'); ol.innerHTML = '';
@@ -405,7 +434,7 @@
       var li = document.createElement('li');
       var img = document.createElement('span'); img.className = 'emo-s'; img.textContent = r.emoji || '🙂';
       var dot = document.createElement('span'); dot.className = 'cdot'; if (r.color) dot.style.background = r.color;
-      var medal = ['🥇', '🥈', '🥉'][i] || (i + 1) + '.';
+      var pl = r.place || i + 1, medal = ['🥇', '🥈', '🥉'][pl - 1] || pl + '.';
       li.appendChild(document.createTextNode(medal + ' ')); li.appendChild(dot); li.appendChild(img);
       var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name; li.appendChild(nm);
       // v9.12: שורה אחת ברורה לסיבוב; שורה משנית רק כשהיא מוסיפה מידע (שיא שונה מהסיום, או מצטבר אחרי 2+ סיבובים)
@@ -414,6 +443,11 @@
       line1.dir = 'ltr'; line1.textContent = Awards.statText(r.pct, r.kills); st.appendChild(line1);
       var tot = r.key ? totByKey[r.key] : null, sub = Awards.subLine(r, tot, round);
       if (sub) { var line2 = document.createElement('span'); line2.className = 'tot-stat'; line2.textContent = sub; st.appendChild(line2); }
+      if (payload && payload.lives) {
+        if (r.win) li.classList.add('win');
+        var lvs = document.createElement('span'); lvs.className = 'lv'; lvs.textContent = r.lives > 0 ? '❤️' + r.lives : '💀';
+        li.appendChild(lvs);
+      }
       li.appendChild(st);
       if (r.id === myPid) li.classList.add('me');
       ol.appendChild(li);
@@ -495,7 +529,11 @@
         p.kills = ps.kills; p.gone = ps.gone;
         var hs = hist[ps.id] || (hist[ps.id] = []);
         if (!ps.alive) { p.alive = false; hs.length = 0; return; }
-        if (!p.alive) { hs.length = 0; p.alive = true; p.x = ps.x; p.y = ps.y; p.h = p.target = ps.h; }
+        if (!p.alive) {
+          hs.length = 0; p.alive = true; p.x = ps.x; p.y = ps.y; p.h = p.target = ps.h;
+          if (Core.livesStart && p.everAlive) p.protMs = now + Lives.PROTECT_MS;   // v9.13: הבהוב הגנה אחרי חזרה
+          p.everAlive = true;
+        }
         hs.push({ t: ht, x: ps.x, y: ps.y, h: ps.h });
         if (hs.length > 8) hs.shift();
       });
@@ -514,10 +552,13 @@
     else if (m.t === 'start') {
       hist = {}; offset = null; myId = m.you; overlayOn = false;
       throttle = new Net.InputThrottle(function (a) { send(conn, 'i' + a.toFixed(3)); }, 33, 0.01);
-      Core.startMatch({ mode: 'client', size: m.size, roster: m.roster, myId: m.you, diff: m.diff, roundMs: m.roundMs });
+      Core.startMatch({ mode: 'client', size: m.size, roster: m.roster, myId: m.you, diff: m.diff, roundMs: m.roundMs, lives: m.lives || 0 });
       m.roster.forEach(function (r, i) { if (r.gone) Core.game.players[i].gone = true; });
       Core.pits.applySync(Core.game, m.pits || []);
       if (m.packs) Core.onPackNet({ a: 'sync', list: m.packs });
+    }
+    else if (m.t === 'lives') {
+      if (Core.mode === 'client' && Core.game) Core.applyLives(m.n, m.l);
     }
     else if (m.t === 'pit') {
       if (Core.mode === 'client' && Core.game) Core.pits.applySync(Core.game, m.list);
@@ -539,6 +580,7 @@
       Core.fxDeath(v, by, m.r, m.b);
       if (m.r === 'left') { Core.feed(Core.nm(v) + ' עזב/ה את המשחק'); v.gone = true; return; }
       if (v === Core.me) Core.myDeath({ reason: m.r, killer: by });
+      else if (Core.livesStart && (v.lives || 0) <= 0) Core.feed(Core.nm(v) + ' הודח/ה 💀');
       else if (m.r === 'pit') Core.feed(Core.nm(v) + ' נפל/ה לבור מלכודת 🌋');
       else if (m.r === 'enclosed' && by) Core.feed(Core.nm(v) + ' נכלא/ה בשטח של ' + (by === Core.me ? 'אותך! ⚔️' : Core.nm(by)));
       else if (by === Core.me) Core.feed('הבסת את ' + Core.nm(v) + '! ⚔️');
