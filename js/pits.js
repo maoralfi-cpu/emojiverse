@@ -56,26 +56,47 @@
     }
   };
   // Small fixed geometry, no per-frame particle arrays, gradients or sprites to rebuild.
-  // Rim radius = lethal radius; larger outer glow advertises danger without enlarging hitbox.
+  // Rim sits at the lethal radius; a modest outer glow advertises danger without enlarging the hitbox.
   Pits.draw = function (c, x, y, scale, now, id, reduced) {
-    var r = Pits.RADIUS * scale, a = reduced ? 0 : now / 650 + id * 1.7;
+    var r = Pits.RADIUS * scale, t = reduced ? 0 : now / 800 + id * 1.3, pulse = reduced ? 0 : 0.05 * Math.sin(t);
+    var i, a, rr, sx, sy, n = reduced ? 6 : 8;
     c.save(); c.translate(x, y); c.scale(r, r);
-    c.fillStyle = '#512434'; c.beginPath(); c.ellipse(0, 0.12, 1.35, 1.18, 0, 0, Math.PI * 2); c.fill();
-    c.globalAlpha = 0.18 + 0.08 * Math.sin(a); c.strokeStyle = '#ff6b31'; c.lineWidth = 0.35;
-    c.beginPath(); c.arc(0, 0, 1.12, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1;
-    c.fillStyle = '#130e22'; c.beginPath(); c.arc(0, 0, 1, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = '#ff723d'; c.lineWidth = 0.15; c.stroke();
-    c.strokeStyle = '#ffd073'; c.lineWidth = 0.065;
-    c.beginPath(); c.arc(0, 0, 1.01, 3.5, 5.7); c.stroke();
-    c.rotate(a); c.strokeStyle = '#823451'; c.lineWidth = 0.09;
-    for (var k = 0; k < 3; k++) {
-      c.rotate(Math.PI * 2 / 3); c.beginPath(); c.moveTo(0.08, 0);
-      c.bezierCurveTo(0.55, -0.7, 0.9, -0.2, 0.66, 0.48); c.stroke();
+    // הילה חיצונית – סימון סכנה בלי להגדיל את רדיוס הפגיעה
+    c.globalAlpha = 0.20 + pulse; c.fillStyle = '#ff5a1f';
+    c.beginPath(); c.ellipse(0, 0.06, 1.32, 1.18, 0, 0, Math.PI * 2); c.fill(); c.globalAlpha = 1;
+    // שפת סלע חומה-אוכרה: אבנים חופפות סביב השפה, כדי שזה ייראה כבור באדמה
+    for (i = 0; i < n; i++) {
+      a = i * Math.PI * 2 / n + id * 0.37;
+      rr = 0.90 + 0.10 * Math.sin(id * 2.3 + i * 1.9);
+      sx = Math.cos(a) * 0.92; sy = Math.sin(a) * 0.80 + 0.05;
+      c.fillStyle = (i + id) % 2 ? '#7a4a24' : '#5c3518';
+      c.beginPath(); c.ellipse(sx, sy, 0.40 * rr, 0.28 * rr, a, 0, Math.PI * 2); c.fill();
+      if (!reduced && i % 2 === 0) {
+        c.fillStyle = '#9a6a38';
+        c.beginPath(); c.ellipse(sx - 0.04, sy - 0.05, 0.18 * rr, 0.12 * rr, a, 0, Math.PI * 2); c.fill();
+      }
     }
-    c.fillStyle = '#ffb953';
-    for (k = 0; k < (reduced ? 3 : 6); k++) {
-      var b = k * 2.399 + a * 0.3, d = 1.24 + 0.13 * Math.sin(a + k);
-      c.beginPath(); c.arc(Math.cos(b) * d, Math.sin(b) * d, 0.035 + (k % 2) * 0.02, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#3d2414'; c.beginPath(); c.ellipse(0, 0.04, 0.98, 0.86, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#5a3a22'; c.beginPath(); c.ellipse(0, 0.03, 0.90, 0.78, 0, 0, Math.PI * 2); c.fill();
+    // טבעת לבה כתומה-אדומה עם הדגשת צהוב, ופעימה עדינה
+    c.strokeStyle = '#d32a08'; c.lineWidth = 0.20 + pulse;
+    c.beginPath(); c.ellipse(0, 0.02, 0.78, 0.68, 0, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = '#ff7a18'; c.lineWidth = 0.12;
+    c.beginPath(); c.ellipse(0, 0.02, 0.70, 0.60, 0, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = '#ffd56a'; c.lineWidth = 0.05 + (reduced ? 0 : 0.02 * Math.sin(t + 1));
+    c.beginPath(); c.ellipse(0, 0.02, 0.64, 0.55, 0, 0, Math.PI * 2); c.stroke();
+    // לוע כהה
+    c.fillStyle = '#120805'; c.beginPath(); c.ellipse(0, 0.03, 0.56, 0.47, 0, 0, Math.PI * 2); c.fill();
+    // ברק על הלבה
+    c.strokeStyle = 'rgba(255,245,200,0.9)'; c.lineWidth = 0.055;
+    c.beginPath(); c.ellipse(0, 0.02, 0.68, 0.58, 0, 3.5, 5.3); c.stroke();
+    if (!reduced) {
+      var b1 = 0.055 + 0.02 * Math.sin(t * 1.5), b2 = 0.04 + 0.015 * Math.sin(t * 1.2 + 2);
+      c.fillStyle = 'rgba(255,210,90,0.85)';
+      c.beginPath(); c.arc(0.52, -0.28, b1, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(-0.40, 0.30, b2, 0, Math.PI * 2); c.fill();
+      c.fillStyle = 'rgba(255,255,230,0.75)';
+      c.beginPath(); c.arc(0.50, -0.30, b1 * 0.35, 0, Math.PI * 2); c.fill();
     }
     c.restore();
   };

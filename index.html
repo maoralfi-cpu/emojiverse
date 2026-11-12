@@ -15,7 +15,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=20261112092356">
+<link rel="stylesheet" href="style.css?v=20261112094158">
 </head>
 <body>
 <div id="bootFail" class="hidden"><div class="bootcard"><b>הדפדפן לא נתמך – פתחו ב-Chrome</b><p>אם פתחתם מוואטסאפ: ⋮ ← „פתח בדפדפן“ / Chrome. אם זה עדיין תקוע – עדכנו את Chrome ו-Android System WebView.</p><pre id="bootErr"></pre></div></div>
@@ -187,7 +187,8 @@
 <!-- תוצאות סיבוב -->
 <section id="results" class="screen hidden">
   <div class="card small">
-    <h2>סוף הסיבוב ב-<span dir="ltr">Emojiverse</span> 🏁</h2>
+    <h2>סוף הסיבוב ב-<span dir="ltr">Emojiverse</span> 🏁<span id="roundTag"></span></h2>
+    <div id="awardsRow" class="awards-row"></div>
     <ol id="rankList"></ol>
     <button id="againRoundBtn" class="primary">עוד סיבוב ↻</button>
     <button id="toLobbyBtn">ללובי</button>
@@ -205,19 +206,20 @@
   </div>
 </section>
 
-<script src="js/version.js?v=20261112092356"></script>
-<script src="js/boot.js?v=20261112092356"></script>
-<script src="js/game.js?v=20261112092356"></script>
-<script src="js/ai.js?v=20261112092356"></script>
-<script src="js/terrain.js?v=20261112092356"></script>
-<script src="js/input.js?v=20261112092356"></script>
-<script src="js/avatars.js?v=20261112092356"></script>
-<script src="js/emoji.js?v=20261112092356"></script>
-<script src="js/fx.js?v=20261112092356"></script>
-<script src="js/pits.js?v=20261112092356"></script>
-<script src="js/packs.js?v=20261112092356"></script>
-<script src="js/net.js?v=20261112092356"></script>
-<script src="js/main.js?v=20261112092356"></script>
-<script src="js/mp.js?v=20261112092356"></script>
+<script src="js/version.js?v=20261112094158"></script>
+<script src="js/boot.js?v=20261112094158"></script>
+<script src="js/game.js?v=20261112094158"></script>
+<script src="js/ai.js?v=20261112094158"></script>
+<script src="js/terrain.js?v=20261112094158"></script>
+<script src="js/input.js?v=20261112094158"></script>
+<script src="js/avatars.js?v=20261112094158"></script>
+<script src="js/emoji.js?v=20261112094158"></script>
+<script src="js/fx.js?v=20261112094158"></script>
+<script src="js/pits.js?v=20261112094158"></script>
+<script src="js/packs.js?v=20261112094158"></script>
+<script src="js/net.js?v=20261112094158"></script>
+<script src="js/awards.js?v=20261112094158"></script>
+<script src="js/main.js?v=20261112094158"></script>
+<script src="js/mp.js?v=20261112094158"></script>
 </body>
 </html>

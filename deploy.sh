@@ -8,6 +8,7 @@ cd "$(dirname "$0")"
 PAGES_URL="https://maoralfi-cpu.github.io/emojiverse"
 node test/logic.test.js >/dev/null || { echo "בדיקות הלוגיקה נכשלו – לא פורסים"; exit 1; }
 node test/net.test.js >/dev/null || { echo "בדיקות הרשת נכשלו – לא פורסים"; exit 1; }
+node test/awards.test.js >/dev/null || { echo "בדיקות הניקוד המצטבר נכשלו – לא פורסים"; exit 1; }
 node test/fx.test.js >/dev/null || { echo "בדיקות האפקטים נכשלו – לא פורסים"; exit 1; }
 node test/packs.test.js >/dev/null || { echo "בדיקות החבילות נכשלו – לא פורסים"; exit 1; }
 node test/fill.test.js >/dev/null || { echo "בדיקות המילוי נכשלו – לא פורסים"; exit 1; }

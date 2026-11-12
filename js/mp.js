@@ -49,6 +49,8 @@
   var peer = null, code = '', leaving = false, overlayOn = false;
   // מארח
   var humans = [], cfg = { bots: 2, diff: 'easy', minutes: 3 }, tracker = null, inGame = false, lastRank = null;
+  var matchTotals = Awards.empty(), matchRound = 0, lastResults = null;
+  function resetMatchScore() { matchTotals = Awards.empty(); matchRound = 0; lastResults = null; lastRank = null; }
   // לקוח
   var conn = null, lobbyState = null, myKey = '', myId = 0, throttle = null, hist = {}, offset = null, lastArrival = 0, msLeftAt = 0, connectTimer = 0;
 
@@ -99,7 +101,7 @@
   $('leaveBtn').onclick = function () { if (Core.mode !== 'solo') Core.toMenu(); else { leave(); Core.show('menu'); } };
   $('resultsLeave').onclick = function () { Core.toMenu(); };
   $('againRoundBtn').onclick = function () { if (role === 'host') hostStart(); };
-  $('toLobbyBtn').onclick = function () { if (role === 'host') { inGame = false; Core.setState('menu'); broadcast({ t: 'tolobby' }); showLobby(); } };
+  $('toLobbyBtn').onclick = function () { if (role === 'host') { inGame = false; resetMatchScore(); Core.setState('menu'); broadcast({ t: 'tolobby' }); showLobby(); } };
   $('startBtn').onclick = function () { if (role === 'host') hostStart(); };
   $('lobbyName').addEventListener('input', function () {
     var n = Net.cleanName(this.value); S.name = n; Core.save();
@@ -206,7 +208,7 @@
       if (lobbyOpen) { msg('lobbyMsg', ''); return; }   // חיבור מחדש לאותו חדר – הלובי נשאר כמו שהוא
       lobbyOpen = true; myKey = 'host';
       humans = [{ key: 'host', name: Net.cleanName(S.name) || 'מארח', avatar: 0, emoji: Emoji.valid(S.emoji) ? S.emoji : '', host: true, conn: null, pid: 0 }];
-      inGame = false; showLobby(); keepAwake();
+      inGame = false; resetMatchScore(); showLobby(); keepAwake();
       msg('lobbyMsg', 'שתפו וחזרו ל-Chrome – החדר פתוח כשהמסך הזה פתוח');
     });
     me.on('connection', onClientConn);
@@ -302,12 +304,12 @@
     for (var i = 0; i < Avatars.list.length; i++) if (used.indexOf(i) < 0) free.push(i);
     // מי שלא בחר אימוג'י מקבל אקראי שלא בשימוש; גם הבוטים
     var usedE = humans.map(function (h) { return h.emoji; }).filter(Boolean);
-    var list = humans.map(function (h) { var e = h.emoji || Emoji.randomFree(usedE); if (!h.emoji) usedE.push(e); return { name: h.name, avatar: h.avatar, emoji: e, color: Avatars.list[h.avatar].color, isBot: false }; });
+    var list = humans.map(function (h) { var e = h.emoji || Emoji.randomFree(usedE); if (!h.emoji) usedE.push(e); return { name: h.name, avatar: h.avatar, emoji: e, color: Avatars.list[h.avatar].color, isBot: false, key: h.key }; });
     var extra = EXTRA_COLORS.slice();
     for (var b = 0; b < cfg.bots; b++) {
       var av = free.length ? free[b % free.length] : b % Avatars.list.length;
       var be = Emoji.randomFree(usedE); usedE.push(be);
-      list.push({ name: BOT_NAMES[b] + ' 🤖', emoji: be, avatar: av, color: b < free.length ? Avatars.list[av].color : extra.shift(), isBot: true });
+      list.push({ name: BOT_NAMES[b] + ' 🤖', emoji: be, avatar: av, color: b < free.length ? Avatars.list[av].color : extra.shift(), isBot: true, key: 'bot:' + b });
     }
     humans.forEach(function (h, k) { h.pid = k + 1; });
     var size = list.length <= 3 ? 80 : list.length <= 7 ? 100 : 130;    // מפה לפי מספר המשתתפים
@@ -321,14 +323,14 @@
   function joinMidGame(h) {
     var g = Core.game; if (!g) return;
     var usedNow = g.players.filter(function (q) { return !q.gone; }).map(function (q) { return q.emoji; });
-    var p = Core.addMatchPlayer({ name: h.name, avatar: h.avatar, emoji: h.emoji && usedNow.indexOf(h.emoji) < 0 ? h.emoji : Emoji.randomFree(usedNow), color: Avatars.list[h.avatar].color, isBot: false }, true);
+    var p = Core.addMatchPlayer({ name: h.name, avatar: h.avatar, emoji: h.emoji && usedNow.indexOf(h.emoji) < 0 ? h.emoji : Emoji.randomFree(usedNow), color: Avatars.list[h.avatar].color, isBot: false, key: h.key }, true);
     h.pid = p.id;
     humans.forEach(function (o) { if (o.conn && o !== h) send(o.conn, { t: 'roster', roster: roster(g) }); });
     send(h.conn, { t: 'start', size: g.W, roster: roster(g), you: h.pid, roundMs: Core.match.roundMs, diff: cfg.diff, mid: true, packs: Core.packs.publicList(), pits: Core.pits.publicList() });
     send(h.conn, Net.encodeSnap(g, new Net.Tracker(g), Core.match.msLeft, Core.state === 'paused'));
     if (Core.state === 'paused') send(h.conn, { t: 'pause', why: 'bg' });
     Core.feed(h.name + ' הצטרף/ה');
-    if (Core.state === 'results') send(h.conn, { t: 'results', rank: lastRank });
+    if (Core.state === 'results') send(h.conn, lastResults || { t: 'results', rank: lastRank });
   }
   var hooks = {
     onTick: function () {
@@ -350,10 +352,19 @@
     },
     roundOver: function () {
       var g = Core.game; lastRank = Net.ranking(g);
+      var entries = g.players.map(function (p) {
+        return { key: p.key, name: p.name, emoji: p.emoji, avatar: p.avatar, color: p.color, isBot: p.isBot, kills: p.kills, pct: +g.pct(p).toFixed(1), deaths: p.deaths || 0, gone: !!p.gone };
+      });
+      matchTotals = Awards.addRound(matchTotals, entries);
+      matchRound++;
+      lastRank.forEach(function (r) { var p = g.players[r.id - 1]; if (p) { r.key = p.key; r.deaths = p.deaths || 0; } });
+      var presentKeys = lastRank.map(function (r) { return r.key; }).filter(Boolean);
+      var totalsList = Awards.present(matchTotals, presentKeys);
+      lastResults = { t: 'results', rank: lastRank, totals: totalsList, awards: Awards.awards(totalsList), round: matchRound };
       Core.endRound();
       broadcast(Net.encodeSnap(g, tracker, 0, false));
-      broadcast({ t: 'results', rank: lastRank });
-      showResults(lastRank);
+      broadcast(lastResults);
+      showResults(lastResults);
     },
     onPause: function (why) { broadcast({ t: 'pause', why: why }); },
     onResume: function () { broadcast({ t: 'resume' }); },
@@ -364,7 +375,26 @@
   };
   Core.attach(hooks);
 
-  function showResults(rank) {
+  function showResults(payload) {
+    var rank = payload, awards = { kills: [], territory: [], double: [], undefeated: [] }, totals = [], round = 0;
+    if (payload && !Array.isArray(payload)) {
+      rank = payload.rank; awards = payload.awards || awards; totals = payload.totals || []; round = payload.round || 0;
+    }
+    var totByKey = {};
+    (totals || []).forEach(function (t) { if (t && t.key) totByKey[t.key] = t; });
+    var box = $('awardsRow'); box.innerHTML = '';
+    function chip(icon, label, people) {
+      if (!people || !people.length) return;
+      var el = document.createElement('div'); el.className = 'award-chip';
+      el.textContent = icon + ' ' + label + ': ' + people.map(function (p) { return (p.emoji ? p.emoji + ' ' : '') + p.name; }).join(' · ');
+      box.appendChild(el);
+    }
+    chip('🗡️', 'מלך החיסולים', awards.kills);
+    chip('🗺️', 'מלך השטח', awards.territory);
+    chip('👑', 'אלוף כפול', awards.double);
+    chip('🛡️', 'בלתי מנוצח', awards.undefeated);
+    var tag = $('roundTag');
+    tag.textContent = round > 1 ? ' · אחרי ' + round + ' סיבובים' : (round === 1 ? ' · סיבוב 1' : '');
     var ol = $('rankList'); ol.innerHTML = '';
     var myPid = role === 'host' ? 1 : myId;
     (rank || []).forEach(function (r, i) {
@@ -374,7 +404,15 @@
       var medal = ['🥇', '🥈', '🥉'][i] || (i + 1) + '.';
       li.appendChild(document.createTextNode(medal + ' ')); li.appendChild(dot); li.appendChild(img);
       var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name; li.appendChild(nm);
-      var st = document.createElement('span'); st.className = 'p'; st.textContent = r.pct.toFixed(1) + '% · ⚔️' + r.kills; li.appendChild(st);
+      var st = document.createElement('span'); st.className = 'p';
+      var line1 = document.createElement('span'); line1.className = 'round-stat'; line1.textContent = r.pct.toFixed(1) + '% · ⚔️' + r.kills; st.appendChild(line1);
+      var tot = r.key ? totByKey[r.key] : null;
+      if (tot) {
+        var line2 = document.createElement('span'); line2.className = 'tot-stat';
+        line2.textContent = 'סה״כ ' + tot.pct.toFixed(1) + '% · ⚔️' + tot.kills;
+        st.appendChild(line2);
+      }
+      li.appendChild(st);
       if (r.id === myPid) li.classList.add('me');
       ol.appendChild(li);
     });
@@ -506,7 +544,7 @@
     }
     else if (m.t === 'pause') { if (Core.mode === 'client') netMessage('המשחק מושהה', m.why === 'bg' ? 'המארח יצא מהאפליקציה – המשחק מושהה עד שיחזור.' : 'המארח השהה את המשחק.', false); }
     else if (m.t === 'resume') { hideOverlay(); }
-    else if (m.t === 'results') { overlayOn = false; Core.endRound(); showResults(m.rank); }
+    else if (m.t === 'results') { overlayOn = false; Core.endRound(); showResults(m); }
     else if (m.t === 'tolobby') { Core.setState('menu'); Core.stopLoop(); Core.show('lobby'); if (lobbyState) renderLobby(lobbyState); }
   }
   /* אינטרפולציה: מציירים ~70ms "מאחורי" המארח, בין שתי תמונות המצב שמקיפות את הרגע הזה */
@@ -543,7 +581,7 @@
     if (role === 'host') { broadcast({ t: 'bye' }); humans.forEach(function (h) { try { h.conn && h.conn.close(); } catch (e) {} }); }
     try { if (conn) conn.close(); } catch (e) {}
     try { if (peer) peer.destroy(); } catch (e) {}
-    peer = null; conn = null; role = null; humans = []; inGame = false; tracker = null; throttle = null; lobbyState = null; hist = {};
+    peer = null; conn = null; role = null; humans = []; inGame = false; tracker = null; throttle = null; lobbyState = null; hist = {}; resetMatchScore();
   }
   window.addEventListener('pagehide', function (e) { if (!e.persisted && role) { try { if (peer) peer.destroy(); } catch (x) {} } });
 
