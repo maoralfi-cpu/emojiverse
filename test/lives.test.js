@@ -76,10 +76,53 @@ test('הגנה: בזמן ההגנה לא נפסלים (שובל/ראש/בור), 
   const g = game(2); Lives.init(g.players, 3);
   const [a, b] = g.players; g.spawn(a, { x: 15, y: 15 }); g.spawn(b, { x: 45, y: 45 });
   Lives.protect(a, g.tickNo);
-  ['trail', 'head', 'self', 'pit', 'enclosed'].forEach(r => { g.kill(a, b, r); assert.ok(a.alive, 'מוגן מ-' + r); });
+  // v9.14: 'enclosed' כבר לא חסום בהגנה (הקפה שהושלמה תמיד פוסלת) – ראו הבדיקה הנפרדת
+  ['trail', 'head', 'self', 'pit'].forEach(r => { g.kill(a, b, r); assert.ok(a.alive, 'מוגן מ-' + r); });
   assert.equal(b.kills, 0); assert.equal(a.deaths, 0); assert.equal(g.events.length, 0);
   g.tickNo += Lives.PROTECT_TICKS;
   g.kill(a, b, 'trail'); assert.ok(!a.alive); assert.equal(b.kills, 1);
+});
+test('v9.14: הגנה לא מצילה מכליאה (enclosed) – נפסל, מאבד חיים, הריגה לכובש', () => {
+  const g = game(2); Lives.init(g.players, 3);
+  const [a, b] = g.players; g.spawn(a, { x: 15, y: 15 }); g.spawn(b, { x: 45, y: 45 });
+  Lives.protect(a, g.tickNo);
+  g.kill(a, b, 'enclosed');
+  assert.ok(!a.alive); assert.equal(b.kills, 1);
+  const ev = g.events.find(e => e.type === 'death' && e.victim === a); assert.equal(ev.reason, 'enclosed');
+  assert.equal(Lives.onDeath(a, g.tickNo), 2);
+});
+function rect(g, id, x0, y0, x1, y1) { for (let y = y0; y < y1; y += g.CELL) for (let x = x0; x < x1; x += g.CELL) g.setOwner(g.cellAt(x + 0.01, y + 0.01), id); }
+function encircle(g, a, pin) {
+  const go = (ang, dist) => { const k = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < k && a.alive; i++) { a.h = a.target = ang; g.step(); pin(); } };
+  go(0, 18); go(Math.PI / 2, 10); go(Math.PI, 18); go(-Math.PI / 2, 5);
+}
+test('v9.14 סימולציה: שחקן מוגן (אחרי חזרה) שמוקף ונכלא – נפסל מיד, חוזר עם חיים פחות ולא על השטח הכולא', () => {
+  const g = game(2, 80, 11); Lives.init(g.players, 3);
+  const [a, b] = g.players; g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 60, y: 60 });
+  rect(g, a.id, 18, 21, 22, 26);
+  Lives.protect(b, g.tickNo); b.invulnUntil = g.tickNo + 100000;   // כל הסיבוב "מוגן" – כדי לוודא שההגנה לא מצילה
+  encircle(g, a, () => { if (b.alive) { b.x = b.px = 30; b.y = b.py = 28; b.trail = []; } });
+  assert.ok(a.alive && !a.trail.length, 'הלולאה נסגרה');
+  assert.ok(!b.alive, 'המוגן נכלא ונפסל');
+  const ev = g.events.find(e => e.type === 'death' && e.victim === b);
+  assert.equal(ev.reason, 'enclosed'); assert.equal(ev.killer, a);
+  assert.equal(Lives.onDeath(b, g.tickNo), 2);
+  let back = false; for (let t = 0; t < 400 && !back; t++) { g.tickNo++; back = Lives.respawnStep(g, b, true, 180, 0); }
+  assert.ok(back && b.alive && Lives.isProtected(b, g.tickNo));
+  assert.notEqual(g.ownerAt(b.x, b.y), a.id, 'לא חוזר על השטח של הכובש');
+  assert.ok(g.dist2(b.x, b.y, 28, 26) > 36, 'לא בתוך הכלא');
+});
+test('v9.14 סימולציה: נכלא בחיים האחרונים – מודח', () => {
+  const g = game(2, 80, 12); Lives.init(g.players, 3);
+  const [a, b] = g.players; g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 60, y: 60 });
+  rect(g, a.id, 18, 21, 22, 26); rect(g, a.id, 20, 24.5, 34, 26);
+  b.lives = 1; Lives.protect(b, g.tickNo);
+  // עומד על הרצועה של הכובש (שטח שכבר היה שלו) בתוך הלולאה
+  encircle(g, a, () => { if (b.alive) { b.x = b.px = 32; b.y = b.py = 25.2; b.trail = [33.5, 25.2, 32, 25.2]; b.tb = [32, 25.2, 33.5, 25.2]; b.h = b.target = Math.PI; } });
+  assert.ok(!b.alive); Lives.onDeath(b, g.tickNo);
+  assert.ok(Lives.isOut(b));
+  for (let t = 0; t < 600; t++) { g.tickNo++; assert.ok(!Lives.respawnStep(g, b, true, 180, 0)); }
+  assert.ok(Lives.matchOver(g.players).over && Lives.matchOver(g.players).winners[0] === a);
 });
 test('הגנה לא חוסמת עזיבה', () => {
   const g = game(2); Lives.init(g.players, 3); const a = g.players[0]; g.spawn(a, { x: 15, y: 15 });

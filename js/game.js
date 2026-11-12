@@ -158,7 +158,7 @@
   };
 
   /* מטביע עיגול של תאים כשטח של id */
-  P.stamp = function (x, y, r, id, onlyFree) {
+  P.stamp = function (x, y, r, id, onlyFree, mask) {
     var C = this.CELL, G = this.G;
     var x0 = Math.floor((x - r) / C), x1 = Math.floor((x + r) / C), y0 = Math.floor((y - r) / C), y1 = Math.floor((y + r) / C);
     for (var cy = y0; cy <= y1; cy++) for (var cx = x0; cx <= x1; cx++) {
@@ -166,6 +166,7 @@
       if (dx * dx + dy * dy > r * r) continue;
       var ci = mod(cy, G) * G + mod(cx, G);
       if (onlyFree && this.owner[ci] && this.owner[ci] !== id) continue;   // הולדה לא דורסת שטח של אחרים
+      if (mask) mask[ci] = 1;                                                // v9.14: עקבות השובל (לבדיקת לולאה)
       this.setOwner(ci, id);
     }
   };
@@ -187,7 +188,8 @@
   P.kill = function (p, killer, reason) {
     if (!p.alive) return;
     // v9.13 מצב חיים: הגנה קצרה אחרי חזרה לחיים (invulnUntil מוגדר רק במצב חיים). עזיבה ואובדן כל השטח – תמיד.
-    if (p.invulnUntil && this.tickNo < p.invulnUntil && reason !== 'left' && reason !== 'territory') return;
+    // v9.14: גם נכלא/ה (הקפה שהושלמה) – תמיד נפסל, גם בזמן ההגנה. ההגנה רק מפני התנגשויות זולות.
+    if (p.invulnUntil && this.tickNo < p.invulnUntil && reason !== 'left' && reason !== 'territory' && reason !== 'enclosed') return;
     p.alive = false; p.deaths++; p.lastTrail = p.trail; p.trail = [];   // v9: השובל האחרון נשמר לאפקט "שבירה"
     if (this.counts[p.id] > 0) {
       var o = this.owner, n = o.length;
@@ -246,16 +248,18 @@
     var id = p.id, t = p.trail, C = this.CELL, G = this.G, k;
     var step = C * 0.5;
     // v8: ראשים של כל השאר לפני הכיבוש (תא עטוף + הבעלים הקודם) – לבדיקת "נכלא"
-    var heads = [];
-    for (k = 0; k < this.players.length; k++) { var hq = this.players[k]; if (hq !== p && hq.alive) { var hc = this.cellAt(hq.x, hq.y); heads.push(hq, hc, this.owner[hc]); } }
+    var heads = [], onMine = false;
+    for (k = 0; k < this.players.length; k++) { var hq = this.players[k]; if (hq !== p && hq.alive) { var hc = this.cellAt(hq.x, hq.y); heads.push(hq, hc, this.owner[hc]); if (this.owner[hc] === id) onMine = true; } }
+    // v9.14: מישהו עומד על שטח שכבר היה של הכובש – שומרים מצב קודם ואת עקבות השובל לבדיקת "בתוך הלולאה"
+    var loop = onMine && t.length >= 4 ? { pre: this.owner.slice(), wall: new Uint8Array(this.owner.length), sx: t[0], sy: t[1], ex: t[t.length - 2], ey: t[t.length - 1] } : null;
     for (k = 0; k + 3 < t.length; k += 2) {
       var ax = t[k], ay = t[k + 1], bx = t[k + 2], by = t[k + 3];
       var len = Math.hypot(bx - ax, by - ay), m = Math.max(1, Math.ceil(len / step));
-      for (var s = 0; s <= m; s++) this.stamp(ax + (bx - ax) * s / m, ay + (by - ay) * s / m, this.STAMP_R, id);
+      for (var s = 0; s <= m; s++) this.stamp(ax + (bx - ax) * s / m, ay + (by - ay) * s / m, this.STAMP_R, id, false, loop && loop.wall);
     }
     p.trail = [];
     var comps = this.components(id);
-    if (comps.count <= 1) { this.enclosed(p, heads); this.events.push({ type: 'capture', player: p, cells: 0 }); return 0; }
+    if (comps.count <= 1) { this.enclosed(p, heads, loop); this.events.push({ type: 'capture', player: p, cells: 0 }); return 0; }
     var maxSz = 0; for (k = 0; k < comps.count; k++) if (comps.size[k] > maxSz) maxSz = comps.size[k];
     var owner = this.owner, mark = this._mark, base = comps.base, n = owner.length;
     var gained = 0, victims = [], taken = 0, vc = {};
@@ -274,7 +278,7 @@
     }
     this._capBox = gained ? [bx0 - C, by0 - C, bx1 + C, by1 + C] : null;
     var mainVictim = 0; for (var vk in vc) if (!mainVictim || vc[vk] > vc[mainVictim]) mainVictim = +vk;
-    this.enclosed(p, heads);
+    this.enclosed(p, heads, loop);
     for (k = 0; k < victims.length; k++) {
       var vp = this.players[victims[k] - 1];
       if (vp.alive && this.counts[vp.id] <= 0) this.kill(vp, p, 'territory');
@@ -286,11 +290,59 @@
   /* v8: מי שהראש שלו נמצא בתא שהפך עכשיו לשל הכובש – נכלא ונפסל (גם אם יש לו שטח במקום אחר).
      v9.9: filled smaller pockets eliminate their occupants; largest exterior is never filled.
      אם הראש נמצא על תא שהשובל עצמו הטביע – התא כבר של הכובש, והיריב נכלא כרגיל. */
-  P.enclosed = function (p, heads) {
+  P.enclosed = function (p, heads, loop) {
+    var inside = null;
     for (var k = 0; k < heads.length; k += 3) {
-      var q = heads[k];
-      if (q.alive && heads[k + 2] !== p.id && this.owner[heads[k + 1]] === p.id) this.kill(q, p, 'enclosed');
+      var q = heads[k], c = heads[k + 1];
+      if (!q.alive || this.owner[c] !== p.id) continue;
+      if (heads[k + 2] !== p.id) { this.kill(q, p, 'enclosed'); continue; }
+      // v9.14: הראש כבר עמד על שטח של הכובש (למשל רצועה/חצי-אי שלו) – נכלא רק אם הוא בתוך הלולאה שנסגרה עכשיו.
+      // מי שמסתובב על השטח של הכובש רחוק מהלולאה – לא נפגע.
+      if (!loop) continue;
+      if (!inside) inside = this.loopInterior(p.id, loop);
+      if (inside(c)) this.kill(q, p, 'enclosed');
     }
+  };
+  /* v9.14: פנים הלולאה שנסגרה זה עתה. הלולאה = עקבות השובל + הדרך הקצרה ביותר בתוך השטח הקודם של הכובש
+     מנקודת הסיום חזרה לנקודת היציאה. מחלקים את שאר המפה (כולל השטח הקודם) לרכיבים (4 שכנים, עוטף);
+     הרכיב הגדול ביותר הוא "חוץ" (בתיקו – כולם בחוץ, כמו במילוי). מחזיר פונקציה cell => בפנים? */
+  P.loopInterior = function (id, L) {
+    var G = this.G, n = G * G, pre = L.pre, wall = L.wall, C = this.CELL;
+    function near(x, y) {
+      var cx = Math.floor(x / C), cy = Math.floor(y / C);
+      for (var r = 0; r <= 3; r++) for (var dy = -r; dy <= r; dy++) for (var dx = -r; dx <= r; dx++) {
+        var i = mod(cy + dy, G) * G + mod(cx + dx, G); if (pre[i] === id) return i;
+      }
+      return -1;
+    }
+    if (!this._liPar || this._liPar.length !== n) { this._liPar = new Int32Array(n); this._liComp = new Int32Array(n); }   // נשמרים בין קריאות
+    var S = near(L.sx, L.sy), E = near(L.ex, L.ey), q = this._queue, par = this._liPar.fill(-1), i, x, y, nb, k;
+    if (S >= 0 && E >= 0) {
+      var qh = 0, qt = 0; par[S] = S; q[qt++] = S;
+      while (qh < qt && par[E] < 0) {
+        i = q[qh++]; x = i % G; y = (i - x) / G;
+        for (k = 0; k < 4; k++) {
+          nb = k === 0 ? y * G + (x ? x - 1 : G - 1) : k === 1 ? y * G + (x < G - 1 ? x + 1 : 0) : k === 2 ? (y ? y - 1 : G - 1) * G + x : (y < G - 1 ? y + 1 : 0) * G + x;
+          if (pre[nb] === id && par[nb] < 0) { par[nb] = i; q[qt++] = nb; }
+        }
+      }
+      if (par[E] >= 0) { for (i = E; i !== S; i = par[i]) wall[i] = 2; wall[S] = 2; }
+    }
+    var comp = this._liComp.fill(-1), size = [], max = 0;
+    for (var s0 = 0; s0 < n; s0++) {
+      if (wall[s0] || comp[s0] >= 0) continue;
+      var cid = size.length, h = 0, tq = 0, sz = 0; comp[s0] = cid; q[tq++] = s0;
+      while (h < tq) {
+        i = q[h++]; x = i % G; y = (i - x) / G; sz++;
+        for (k = 0; k < 4; k++) {
+          nb = k === 0 ? y * G + (x ? x - 1 : G - 1) : k === 1 ? y * G + (x < G - 1 ? x + 1 : 0) : k === 2 ? (y ? y - 1 : G - 1) * G + x : (y < G - 1 ? y + 1 : 0) * G + x;
+          if (!wall[nb] && comp[nb] < 0) { comp[nb] = cid; q[tq++] = nb; }
+        }
+      }
+      size.push(sz);
+      if (sz > max) max = sz;
+    }
+    return function (c) { return !wall[c] && comp[c] >= 0 && size[comp[c]] < max; };
   };
   /* רכיבי קשירות של התאים שאינם של id (4 שכנים, עוטף). mark[i] = base + מס' רכיב */
   P.components = function (id) {

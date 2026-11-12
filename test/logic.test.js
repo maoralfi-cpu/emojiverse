@@ -390,6 +390,69 @@ console.log('v8/v9.6: נכלא בתוך לולאה');
   ok(!b.alive && ev && ev.reason === 'enclosed' && ev.killer === a, 'ראש על השובל: נכלא כרגיל (enclosed)');
   ok(g.counts[b.id] === 0, 'שטח B נמחק אחרי enclosed');
 }
+console.log('v9.14: נכלא גם כשעמד על השטח של הכובש');
+// A: בסיס + רצועה (חצי-אי) ימינה. A יוצא, מקיף את קצה הרצועה וחוזר. B עומד על הרצועה בתוך הלולאה.
+function stripScene(seed, pinB, opts) {
+  opts = opts || {};
+  const g = new Game({ size: 80, rand: seeded(seed) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 60, y: 60 });
+  rect(g, a.id, 20, 24.5, 34, 26); rect(g, a.id, 18, 21, 22, 26);
+  if (opts.big) rect(g, a.id, 4, 4, 20, 20);
+  if (opts.before) opts.before(g, a, b);
+  const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); if (b.alive) pinB(g, b); } };
+  goA(R, 18); goA(D, 10); goA(L, 18); goA(U, 5);
+  return { g, a, b };
+}
+const pinOn = (x, y) => (g, b) => { b.x = b.px = x; b.y = b.py = y; b.trail = [x + 1.5, y, x, y]; b.tb = [x, y, x + 1.5, y]; b.h = b.target = L; };
+{ // החור: הראש על תא שכבר היה של A (heads[k+2] === p.id) – בעבר דולג ונשאר חי בתוך השטח
+  const { g, a, b } = stripScene(71, pinOn(32, 25.2));
+  const ev = g.events.find(e => e.type === 'death' && e.victim === b);
+  ok(a.alive && !a.trail.length && !b.alive && ev && ev.reason === 'enclosed' && ev.killer === a && a.kills === 1, 'v9.14: עומד על רצועה של הכובש בתוך הלולאה – נכלא ונפסל (enclosed)');
+  ok(g.counts[b.id] === 0, 'v9.14: השטח של הנכלא נמחק');
+}
+{ // שליטה: עומד על השטח של הכובש מחוץ ללולאה (בסיס גדול, רחוק) – לא נפגע
+  const { g, a, b } = stripScene(72, pinOn(8, 8), { big: true });
+  ok(a.alive && !a.trail.length && b.alive && g.counts[b.id] > 0, 'v9.14: עומד על השטח של הכובש רחוק מהלולאה – לא נפגע');
+}
+{ // שליטה: עומד על השטח של הכובש ממש ליד הלולאה אבל מחוץ לה (צד שמאל של הבסיס)
+  const { g, a, b } = stripScene(73, pinOn(18.5, 23));
+  ok(a.alive && !a.trail.length && b.alive, 'v9.14: על השטח של הכובש צמוד ללולאה אבל בחוץ – לא נפגע');
+}
+{ // שליטה: על הרצועה של הכובש בחלק שמחוץ ללולאה? (הרצועה כולה בפנים) – בודקים גם מישהו בשטח פנוי מחוץ ללולאה
+  const { g, a, b } = stripScene(74, (g, b) => { b.x = b.px = 50; b.y = b.py = 25; b.trail = []; });
+  ok(a.alive && b.alive, 'v9.14: שחקן בחוץ (שטח פנוי) – לא נפגע');
+}
+{ // אותו דבר מעבר לתפר: הבסיס והרצועה חוצים את x=0
+  const g = new Game({ size: 80, rand: seeded(75) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 70, y: 20 }); g.spawn(b, { x: 40, y: 60 });
+  rect(g, a.id, 70, 24.5, 80, 26); rect(g, a.id, 0, 24.5, 4, 26); rect(g, a.id, 68, 21, 72, 26);
+  const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); if (b.alive) pinOn(2, 25.2)(g, b); } };
+  goA(R, 18); goA(D, 10); goA(L, 18); goA(U, 5);
+  ok(a.alive && !a.trail.length && !b.alive && a.kills === 1, 'v9.14: עומד על רצועה של הכובש מעבר לתפר – נכלא');
+}
+{ // B על האי של עצמו, A מקיף את כל האי – התאים של B עוברים ל-A ו-B נפסל
+  const g = new Game({ size: 80, rand: seeded(76) });
+  const a = g.addPlayer({}), b = g.addPlayer({});
+  g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 60, y: 60 });
+  for (let i = 0; i < g.owner.length; i++) if (g.owner[i] === b.id) g.setOwner(i, 0);
+  rect(g, b.id, 27, 23, 31, 27); g._lost.fill(0);
+  const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); if (b.alive) { b.x = b.px = 29; b.y = b.py = 25; b.trail = []; } } };
+  goA(R, 16); goA(D, 12); goA(L, 16); goA(U, 10);
+  const ev = g.events.find(e => e.type === 'death' && e.victim === b);
+  ok(a.alive && !b.alive && ev && (ev.reason === 'enclosed' || ev.reason === 'territory') && g.counts[b.id] === 0 && own(g, a, 29, 25), 'v9.14: אי שלם של B מוקף – נלקח ו-B נפסל (' + (ev && ev.reason) + ')');
+}
+{ // כיבוש במקום אחר לא מוחק את כל מי שעל השטח של הכובש: כמה שחקנים על הבסיס הגדול
+  const g = new Game({ size: 80, rand: seeded(77) });
+  const a = g.addPlayer({}), b = g.addPlayer({}), c = g.addPlayer({});
+  g.spawn(a, { x: 20, y: 20 }); g.spawn(b, { x: 60, y: 60 }); g.spawn(c, { x: 60, y: 20 });
+  rect(g, a.id, 6, 6, 24, 24);
+  const pin = () => { if (b.alive) { b.x = b.px = 8; b.y = b.py = 8; b.trail = [9, 8, 8, 8]; } if (c.alive) { c.x = c.px = 21.5; c.y = c.py = 22; c.trail = [21.5, 23, 21.5, 22]; } };
+  const goA = (ang, dist) => { const n = Math.round(dist / (g.SPEED * g.DT)); for (let i = 0; i < n && a.alive; i++) { a.h = a.target = ang; g.step(); pin(); } };
+  goA(R, 10); goA(D, 8); goA(L, 7.5); goA(U, 6);
+  ok(a.alive && !a.trail.length && g.counts[a.id] > 18 * 18 * 4 && b.alive && c.alive, 'v9.14: לולאה בצד הבסיס – השחקנים על הבסיס רחוק ממנה לא נפגעים');
+}
 console.log('v8: הולדה בטוחה');
 {
   const g = new Game({ size: 100, rand: seeded(41) });
