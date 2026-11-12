@@ -91,13 +91,15 @@
     return out;
   }
 
-  /* קודי חדר: 4 תווים בלי תווים מבלבלים (O/0, I/1/L) */
-  var ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  function roomCode(rand) { rand = rand || Math.random; var s = ''; for (var i = 0; i < 4; i++) s += ALPHA[Math.floor(rand() * ALPHA.length)]; return s; }
-  // מקלדת עברית: אותה מקשה => האות האנגלית (ש=A, נ=B …), כדי שקוד שהוקלד בעברית בטעות יעבוד
-  var HEB = { 'ש': 'A', 'נ': 'B', 'ב': 'C', 'ג': 'D', 'ק': 'E', 'כ': 'F', 'ע': 'G', 'י': 'H', 'ן': 'I', 'ח': 'J', 'ל': 'K', 'ך': 'L', 'צ': 'M', 'מ': 'N', 'ם': 'O', 'פ': 'P', '/': 'Q', 'ר': 'R', 'ד': 'S', 'א': 'T', 'ו': 'U', 'ה': 'V', "'": 'W', 'ס': 'X', 'ט': 'Y', 'ז': 'Z' };
-  function cleanCode(s) { return String(s || '').replace(/[\u05d0-\u05ea\/']/g, function (c) { return HEB[c] || ''; }).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); }
-  function validCode(s) { return /^[A-Z0-9]{4,6}$/.test(s); }
+  /* קודי חדר: 4 ספרות, כולל אפסים מובילים (למשל 0042) */
+  function roomCode(rand) {
+    rand = rand || Math.random; var s = '';
+    for (var i = 0; i < 4; i++) { var d = Math.floor(rand() * 10); s += d > 9 ? 9 : d < 0 ? 0 : d; }
+    return s;
+  }
+  function cleanCode(s) { return String(s || '').replace(/\D/g, '').slice(0, 4); }
+  function validCode(s) { return /^\d{4}$/.test(s); }
+  function shareText(code, url) { return 'בואו לשחק איתי Emojiverse! קוד החדר: ' + code + '\n' + url; }
   function cleanName(s) { return String(s || '').replace(/[<>&"\u0000-\u001f]/g, '').trim().slice(0, 12); }
 
   /* שליחת קלט רק בשינוי, עם הגבלת קצב (ברירת מחדל 33ms) ושליחה מאוחרת של הערך האחרון */
@@ -127,7 +129,7 @@
     var v = (a + d * f) % W; return v < 0 ? v + W : v;
   }
 
-  var Net = { lerpWrap: lerpWrap, encodeSnap: encodeSnap, decodeSnap: decodeSnap, Tracker: Tracker, roomCode: roomCode, cleanCode: cleanCode, validCode: validCode, cleanName: cleanName, InputThrottle: InputThrottle, ranking: ranking, Q: Q };
+  var Net = { lerpWrap: lerpWrap, encodeSnap: encodeSnap, decodeSnap: decodeSnap, Tracker: Tracker, roomCode: roomCode, cleanCode: cleanCode, validCode: validCode, shareText: shareText, cleanName: cleanName, InputThrottle: InputThrottle, ranking: ranking, Q: Q };
   if (typeof module !== 'undefined' && module.exports) module.exports = Net;
   else root.Net = Net;
 })(this);

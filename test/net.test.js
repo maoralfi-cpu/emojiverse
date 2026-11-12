@@ -116,8 +116,12 @@ console.log('קלט: רק בשינוי, מוגבל קצב');
 console.log('קוד חדר ודירוג');
 {
   const r = seeded(3), codes = new Set(); for (let i = 0; i < 200; i++) codes.add(Net.roomCode(r));
-  ok([...codes].every(c => Net.validCode(c) && !/[O0I1L]/.test(c)), 'קודים של 4 תווים בלי תווים מבלבלים');
-  ok(Net.cleanCode(' ab-c9 ') === 'ABC9' && Net.cleanName('<b>דני</b>') === 'bדני/b', 'ניקוי קוד ושם');
+  ok([...codes].every(c => Net.validCode(c) && /^\d{4}$/.test(c)), 'קודים של 4 ספרות תקינים');
+  ok(Net.roomCode(() => 0) === '0000' && Net.validCode('0000'), 'קוד עם אפסים מובילים');
+  ok(Net.roomCode(() => 1) === '9999', 'rand=1 לא מייצר ספרה 10');
+  ok(Net.cleanCode(' ab-c12 345 אב ') === '1234' && Net.cleanName('<b>דני</b>') === 'bדני/b', 'ניקוי קוד ושם');
+  ok(!Net.validCode('') && !Net.validCode('123') && !Net.validCode('12345') && !Net.validCode('K7RM') && !Net.validCode('12a4'), 'דחיית קודים לא תקינים');
+  ok(Net.shareText('0042', 'https://example.com/?room=0042') === 'בואו לשחק איתי Emojiverse! קוד החדר: 0042\nhttps://example.com/?room=0042', 'טקסט שיתוף מכיל קוד וקישור');
   const g = new Game({ size: 60, rand: seeded(9) });
   const a = g.addPlayer({ name: 'א' }), b = g.addPlayer({ name: 'ב' }); g.spawn(a, { x: 15, y: 30 }); g.spawn(b, { x: 45, y: 30 });
   g.stamp(45, 30, 6, b.id);

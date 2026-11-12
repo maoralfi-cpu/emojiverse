@@ -114,9 +114,9 @@
   }
   segBind('mpBotsSeg', 'bots', Number); segBind('mpDiffSeg', 'diff'); segBind('mpTimeSeg', 'minutes', Number);
   $('shareBtn').onclick = function () {
-    var url = shareURL(), text = 'בואו לשחק איתי Emojiverse! קוד החדר: ' + code;
-    if (navigator.share) navigator.share({ title: 'Emojiverse – משחק אונליין', text: text, url: url }).catch(function () {});
-    else { try { navigator.clipboard.writeText(url); msg('lobbyMsg', 'הקישור הועתק'); } catch (e) {} }
+    var url = shareURL(), text = Net.shareText(code, url);
+    if (navigator.share) navigator.share({ title: 'Emojiverse – משחק אונליין', text: text }).catch(function () {});
+    else { try { navigator.clipboard.writeText(text); msg('lobbyMsg', 'ההודעה הועתקה'); } catch (e) {} }
   };
   function shareURL() { return location.origin + location.pathname.replace(/index\.html$/, '') + '?room=' + code; }
 
@@ -124,7 +124,7 @@
     var isHost = role === 'host';
     $('roomCode').textContent = code;
     $('shareLink').value = shareURL();
-    $('waLink').href = 'https://wa.me/?text=' + encodeURIComponent('בואו לשחק איתי Emojiverse! ' + shareURL());
+    $('waLink').href = 'https://wa.me/?text=' + encodeURIComponent(Net.shareText(code, shareURL()));
     $('shareBox').classList.toggle('hidden', false);
     var mine = L.players.filter(function (p) { return p.key === myKey; })[0];
     if (document.activeElement !== $('lobbyName')) $('lobbyName').value = mine ? mine.name : S.name || '';
@@ -387,7 +387,7 @@
   // ================= לקוח =================
   function joinRoom(raw, since) {
     var c = Net.cleanCode(raw);
-    if (!Net.validCode(c)) { msg('onlineMsg', 'קוד חדר הוא 4 אותיות/ספרות באנגלית (למשל K7QP)'); return; }
+    if (!Net.validCode(c)) { msg('onlineMsg', 'קוד חדר הוא 4 ספרות (למשל 1234)'); return; }
     $('retryBtn').classList.add('hidden');
     if (!since) { leave(); since = Date.now(); }
     role = 'client'; leaving = false; code = c; Core.show('online');
