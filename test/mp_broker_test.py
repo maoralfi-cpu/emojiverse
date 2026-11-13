@@ -31,8 +31,9 @@ with sync_playwright() as p:
     host.evaluate("__koveshNet._drop()")
     R['host_dropped'] = poll(host, "window.__evNet.broker==='disconnected'", 5000)
     R['host_rehosted_same_code'] = poll(host, "window.__evNet.broker==='open'", 20000) and host.evaluate("document.getElementById('roomCode').textContent") == code
-    bad.goto(url + '?room=ZZZZ')
-    R['wrong_code_msg'] = poll(bad, "document.getElementById('onlineMsg').textContent.includes('לא נמצא')", 30000) and bad.evaluate("document.getElementById('onlineMsg').textContent")
+    # v9.10: קוד = 4 ספרות. v9.16: קוד שלא קיים – ממשיכים לחפש עד 2 דקות (המארח אולי בוואטסאפ), עם הודעה ברורה
+    bad.goto(url + '?room=%04d' % ((int(code) + 5000) % 10000))
+    R['wrong_code_msg'] = poll(bad, "/מחכים לחדר/.test(document.getElementById('onlineMsg').textContent)", 30000) and bad.evaluate("document.getElementById('onlineMsg').textContent")
     c.goto(url + '?room=' + code)
     joined = poll(c, "!document.getElementById('lobby').classList.contains('hidden')", 25000)
     R['webrtc_joined'] = joined

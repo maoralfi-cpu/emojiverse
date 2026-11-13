@@ -94,7 +94,7 @@
   $('netOk').onclick = function () { overlayOn = false; if (Core.state === 'play' && Core.mode !== 'solo') Core.show(null); else Core.show(role ? 'lobby' : 'online'); };
 
   $('onlineBtn').onclick = function () { msg('onlineMsg', ''); $('codeInput').value = ''; Core.show('online'); };
-  $('onlineBack').onclick = function () { Core.show('menu'); };
+  $('onlineBack').onclick = function () { if (role === 'client' && !inLobbyOrGame()) leave(); $('retryBtn').classList.add('hidden'); msg('onlineMsg', ''); Core.show('menu'); };   // v9.16: מבטל חיפוש חדר
   $('hostBtn').onclick = function () { startHost(); };
   $('joinBtn').onclick = function () { joinRoom($('codeInput').value); };
   $('codeInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') joinRoom(this.value); });
@@ -459,13 +459,19 @@
   }
 
   // ================= לקוח =================
+  /* v9.16: המארח משתף בוואטסאפ ונשאר שם – בטלפון הדף שלו מוקפא ושרת התיאום מוחק את החדר עד שהוא חוזר.
+     קודם המצטרף ויתר אחרי ~15 שנ' ("החדר לא נמצא") ונשאר תקוע גם אחרי שהמארח חזר. עכשיו ממשיכים לחפש עד 2 דקות
+     ומתחברים לבד ברגע שהחדר חוזר. "חזרה" מבטל את החיפוש. */
+  var SEARCH_MS = 120000, FAST_MS = 15000, retryTimer = 0;
   function joinRoom(raw, since) {
+    clearTimeout(retryTimer);
     var c = Net.cleanCode(raw);
     if (!Net.validCode(c)) { msg('onlineMsg', 'קוד חדר הוא 4 ספרות (למשל 1234)'); return; }
     $('retryBtn').classList.add('hidden');
     if (!since) { leave(); since = Date.now(); }
     role = 'client'; leaving = false; code = c; Core.show('online');
-    msg('onlineMsg', since && Date.now() - since > 1500 ? 'מחפשים את החדר ' + c + '… (ניסיון חוזר)' : 'מתחברים לחדר ' + c + '…');
+    var el = since ? Date.now() - since : 0;
+    msg('onlineMsg', el > FAST_MS ? 'מחכים לחדר ' + c + '… אם המארח שיתף בוואטסאפ – שיחזור למשחק, ונתחבר לבד. (בדקו שהקוד נכון)' : el > 1500 ? 'מחפשים את החדר ' + c + '… (ניסיון חוזר)' : 'מתחברים לחדר ' + c + '…');
     loadPeer().then(function () {
       if (role !== 'client' || code !== c) return;
       var me = peer = newPeer(); dset('broker', 'connecting'); dset('ice', '');
@@ -473,7 +479,7 @@
       connectTimer = setTimeout(function () {
         if (me !== peer || role !== 'client' || (conn && conn.open)) return;
         if (!me.open) return failClient(ERR_BROKER);
-        if (conn && !conn.__rem && Date.now() - since < 15000) { try { me.destroy(); } catch (e) {} peer = null; conn = null; return joinRoom(c, since); } // המארח לא ענה – עוד ניסיון
+        if (conn && !conn.__rem && Date.now() - since < SEARCH_MS) { try { me.destroy(); } catch (e) {} peer = null; conn = null; return joinRoom(c, since); } // המארח לא ענה – עוד ניסיון
         if (conn && !conn.__rem) return failClient(brokerErr({ type: 'peer-unavailable' }));  // אף אחד לא ענה: החדר לא קיים
         if (Date.now() - since < 20000) { var cc = conn; connectTimer = setTimeout(function () { if (cc === conn && role === 'client' && !cc.open) failClient(ERR_NET); }, 20000 - (Date.now() - since)); return; } // נותנים ל-TURN זמן
         failClient(ERR_NET);                                                                  // המארח ענה אבל ICE נכשל
@@ -492,9 +498,9 @@
         if (me !== peer || role !== 'client' || leaving) return;
         dset('err', err.type || String(err));
         // החדר עוד לא רשום (המארח חוזר מוואטסאפ / השרת איטי) – מנסים שוב עד 15 שניות
-        if (err.type === 'peer-unavailable' && Date.now() - since < 15000 && !inLobbyOrGame()) {
+        if (err.type === 'peer-unavailable' && Date.now() - since < SEARCH_MS && !inLobbyOrGame()) {
           clearTimeout(connectTimer); try { me.destroy(); } catch (e) {} peer = null; conn = null;
-          setTimeout(function () { if (role === 'client' && code === c) joinRoom(c, since); }, 2000);
+          retryTimer = setTimeout(function () { if (role === 'client' && code === c && !peer) joinRoom(c, since); }, Date.now() - since < FAST_MS ? 2000 : 4000);
           return;
         }
         failClient(brokerErr(err));
@@ -620,7 +626,7 @@
 
   // ---------- יציאה ----------
   function leave() {
-    leaving = true; clearTimeout(connectTimer); clearTimeout(rehostTimer); lobbyOpen = false; rehostSince = 0;
+    leaving = true; clearTimeout(connectTimer); clearTimeout(rehostTimer); clearTimeout(retryTimer); lobbyOpen = false; rehostSince = 0;
     try { if (wakeLock) wakeLock.release(); } catch (e) {} wakeLock = null;
     if (role === 'host') { broadcast({ t: 'bye' }); humans.forEach(function (h) { try { h.conn && h.conn.close(); } catch (e) {} }); }
     try { if (conn) conn.close(); } catch (e) {}
