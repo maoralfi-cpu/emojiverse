@@ -149,7 +149,11 @@ button:active{transform:scale(.97)}
 
 /* לוגו Emojiverse */
 .card h1.logo{font-weight:900;letter-spacing:-.5px;color:#4c566a}
-.card h1.logo span{color:#5e81ac}
+/* v9.17: הלוגו החדש – SVG מוטמע (חד בכל מסך, בלי רשת ובלי גופן חיצוני) */
+.card h1.logo{line-height:0;display:flex;justify-content:center}
+.card h1.logo .logosvg{display:block;height:clamp(36px,7.6dvh,68px);width:auto;max-width:100%}
+.card h1.logo+.sub{color:#6b7589;font-weight:500;letter-spacing:.1px}
+@media (orientation:landscape) and (max-height:560px){.card h1.logo .logosvg{height:clamp(30px,10dvh,52px)}}
 
 /* v9: צבע השטח ליד השם */
 .cdot{display:inline-block;width:11px;height:11px;border-radius:50%;flex:0 0 11px;border:2px solid rgba(46,52,64,.35);box-sizing:border-box}
