@@ -13,7 +13,7 @@
     this.W = opts.size || 100;
     this.CELL = 0.5;
     this.G = Math.round(this.W / this.CELL);
-    this.SPEED = opts.speed || 9.75;    // יחידות לשנייה
+    this.SPEED = opts.speed || Game.BASE_SPEED;    // יחידות לשנייה (v9.18: במצב מהיר ×FAST_MUL; הסיבוב והשובל העצמי נגזרים מכאן)
     this.DT = 1 / 60;                   // צעד לוגיקה (60 בשנייה, כמו קצב המסך)
     this.TURN_PER_UNIT = 0.7;           // סיבוב מקסימלי לכל יחידת דרך (רדיוס סיבוב מינימלי ≈1.43 יח' ≈ 1.8 רוחבי שובל)
     this.TURN = opts.turn || this.SPEED * this.TURN_PER_UNIT; // ≈6.8 רד'/ש' (~390°/ש') במהירות ברירת המחדל
@@ -38,6 +38,12 @@
     this._mark = new Int32Array(n); this._gen = 0; this._lost = new Uint8Array(64); this._queue = new Int32Array(n);
   }
   Game.TAU = TAU;
+  /* v9.18 מצב מהיר: כל הדמויות (שחקן, בוטים, שחקני אונליין) זזות פי FAST_MUL. קצב הסיבוב גדל באותו יחס,
+     כך שרדיוס הסיבוב (וההרגשה של הפניות) נשאר זהה. ⚡/🐢 עדיין מכפילים את המהירות הבסיסית. */
+  Game.BASE_SPEED = 9.75;
+  Game.FAST_MUL = 1.5;
+  Game.normSpeed = function (s) { return s === 'fast' ? 'fast' : 'normal'; };
+  Game.speedFor = function (s) { return Game.normSpeed(s) === 'fast' ? Game.BASE_SPEED * Game.FAST_MUL : Game.BASE_SPEED; };
   var P = Game.prototype;
 
   /* הפרש קצר ביותר על מעגל באורך W */

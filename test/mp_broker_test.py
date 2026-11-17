@@ -1,7 +1,7 @@
 """בדיקה מול שרת התיאום הציבורי האמיתי של PeerJS (0.peerjs.com).
 בודק: פתיחת חדר מקבלת קוד, קוד שגוי => הודעה ברורה, הצטרפות אמיתית ב-WebRTC.
 אם הסביבה חוסמת WebRTC (כמו בקופסת הבדיקות – מדיניות Chrome disable_non_proxied_udp),
-מוודא שהלקוח מקבל את הודעת השגיאה בעברית (הצעה לאותה רשת Wi-Fi) במקום להיתקע.
+מוודא שהלקוח מקבל את הודעת השגיאה הכללית בעברית (v9.18: בלי "אותה רשת" / Hotspot) במקום להיתקע.
 הרצה: tools/.venv/bin/python test/mp_broker_test.py [URL]"""
 import sys, os, json, time, subprocess
 from playwright.sync_api import sync_playwright
@@ -46,5 +46,5 @@ with sync_playwright() as p:
 if srv: srv.kill()
 R['page_errors'] = errs
 print(json.dumps(R, ensure_ascii=False, indent=1))
-ok = R['room_opened_on_live_broker'] and R['host_rehosted_same_code'] and R['wrong_code_msg'] and not errs and (R['webrtc_joined'] and R.get('host_sees_players') or (not R['webrtc_joined'] and 'Hotspot' in R.get('client_error_msg', '')))
+ok = R['room_opened_on_live_broker'] and R['host_rehosted_same_code'] and R['wrong_code_msg'] and not errs and (R['webrtc_joined'] and R.get('host_sees_players') or (not R['webrtc_joined'] and 'לא הצלחנו להתחבר' in R.get('client_error_msg', '') and not any(w in R.get('client_error_msg', '') for w in ('Hotspot', 'רשת', 'Wi'))))
 print('PASS' + ('' if R['webrtc_joined'] else ' (WebRTC חסום בסביבה – נבדקה הודעת השגיאה)') if ok else 'FAIL')

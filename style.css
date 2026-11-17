@@ -208,3 +208,5 @@ html.safe .card>*{margin:6px 0}
 /* v9.13: שורת "מצב משחק" נוספה ללובי – מפצים בגובה: "בלי בוטים" בשורה אחת */
 #mpBotsSeg button{white-space:nowrap}
 #mpBotsSeg button[data-v="0"]{flex:1.9;font-size:clamp(11px,1.9dvh,14px)}
+/* v9.18: שורת "מהירות" נוספה ללובי */
+#lobby .card>.col:last-child{flex-shrink:0}   /* ההגדרות והכפתורים לא מתכווצים – רשימת השחקנים גוללת במקומם */

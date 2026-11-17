@@ -555,5 +555,79 @@ console.log('v8: סימולציה ארוכה – אין איים');
   }
   ok(bad === 0 && countBad === 0, '6000 צעדים, 8 בוטים קשים: כל שטח הוא רכיב אחד בכל בדיקה (' + captures + ' כיבושים, ' + islandsRemoved + ' איים הוסרו)');
 }
+
+// ---------- v9.18: מצב מהיר ----------
+console.log('v9.18: מצב מהיר');
+{
+  ok(Game.speedFor('normal') === 9.75 && Game.speedFor(undefined) === 9.75 && Game.speedFor('xyz') === 9.75, 'ברירת מחדל / ערך לא מוכר = מהירות רגילה 9.75');
+  ok(Math.abs(Game.speedFor('fast') - 9.75 * Game.FAST_MUL) < 1e-9 && Game.FAST_MUL === 1.5, 'מהיר = ×1.5 (' + Game.speedFor('fast') + ' יח\'/ש\')');
+  ok(Game.normSpeed('fast') === 'fast' && Game.normSpeed('') === 'normal' && Game.normSpeed(null) === 'normal', 'normSpeed מנרמל');
+  const n = new Game({ size: 60, rand: seeded(90) }), f = new Game({ size: 60, speed: Game.speedFor('fast'), rand: seeded(90) });
+  ok(n.SPEED === 9.75, 'משחק בלי speed – רגיל (התנהגות קודמת לא השתנתה)');
+  ok(Math.abs(f.SPEED / f.TURN - n.SPEED / n.TURN) < 1e-9, 'רדיוס הסיבוב זהה במהיר (' + (f.SPEED / f.TURN).toFixed(2) + ' יח\')');
+  ok(f.SELF_SKIP * f.SPEED * f.DT >= 1.5 && f.SELF_SKIP * f.SPEED * f.DT <= 2.0, 'החלון העצמי מכסה ~1.6 יח\' גם במהיר (' + (f.SELF_SKIP * f.SPEED * f.DT).toFixed(2) + ')');
+  const pn = n.addPlayer({}), pf = f.addPlayer({}); n.spawn(pn, { x: 10, y: 30 }); f.spawn(pf, { x: 10, y: 30 });
+  for (let i = 0; i < 60; i++) { pn.h = pn.target = R; pf.h = pf.target = R; n.step(); f.step(); }
+  const dn = Game.wrapDelta(pn.x - 10, 60), df = Game.wrapDelta(pf.x - 10, 60);
+  ok(Math.abs(dn - 9.75) < 0.01 && Math.abs(df - 14.625) < 0.01, 'בשנייה: רגיל ' + dn.toFixed(2) + ', מהיר ' + df.toFixed(2) + ' יח\'');
+  // ⚡ / 🐢 עדיין יחסיים למהירות הבסיס
+  const f2 = new Game({ size: 60, speed: Game.speedFor('fast'), rand: seeded(91) }), q = f2.addPlayer({}); f2.spawn(q, { x: 10, y: 30 }); q.speedMul = 1.55;
+  for (let i = 0; i < 60; i++) { q.h = q.target = R; f2.step(); }
+  ok(Math.abs(Game.wrapDelta(q.x - 10, 60) - 14.625 * 1.55) < 0.02, '⚡ במצב מהיר: ×1.55 מעל הבסיס המהיר (' + Game.wrapDelta(q.x - 10, 60).toFixed(2) + ')');
+}
+{
+  // אין מנהור במהיר (וגם במהיר + ⚡), מכל זווית ובכל היסט תת-צעדי
+  for (const mul of [1, 1.55]) {
+    let c = 0, t = 0;
+    for (let ang = 0.2; ang < Math.PI - 0.2; ang += 0.1) for (let off = 0; off < 1; off += 0.2) {
+      const g = new Game({ size: 60, speed: Game.speedFor('fast'), rand: seeded(92) });
+      const a = g.addPlayer({}), b = g.addPlayer({});
+      g.spawn(a, { x: 5, y: 5 }); g.spawn(b, { x: 50, y: 50 });
+      a.trail = [10, 30, 40, 30]; a.tb = [10, 30, 40, 30]; a.x = 40; a.y = 30.0; a.h = a.target = 0; a.speedMul = 1e-9;
+      const st = g.SPEED * g.DT * mul;
+      b.speedMul = mul; b.x = 25 - Math.cos(ang) * (3 + off * st); b.y = 30 + Math.sin(ang) * (3 + off * st); b.h = b.target = -ang; b.trail = [];
+      for (let i = 0; i < 60 && a.alive; i++) { b.target = -ang; g.step(); }
+      t++; if (!a.alive) c++;
+    }
+    ok(c === t, 'מהיר' + (mul > 1 ? ' + ⚡' : '') + ': חציית שובל נתפסה ' + c + '/' + t + ' (צעד ' + (Game.speedFor('fast') / 60 * mul).toFixed(3) + ' יח\')');
+  }
+}
+{
+  // שובל עצמי ופניית פרסה במהיר
+  const g = new Game({ size: 60, speed: Game.speedFor('fast'), rand: seeded(93) });
+  const p = g.addPlayer({}); g.spawn(p, { x: 10, y: 30 });
+  go(g, p, R, 8);
+  let n = 0; while (p.alive && n++ < 200) { p.target = p.h + 1; g.step(); }
+  ok(!p.alive, 'מהיר: מעגל מלא מחוץ לשטח – נפסל בשובל של עצמו');
+  const g2 = new Game({ size: 60, speed: Game.speedFor('fast'), rand: seeded(94) });
+  const q = g2.addPlayer({}); g2.spawn(q, { x: 10, y: 30 });
+  go(g2, q, R, 8);
+  const h0 = q.h; let turned = 0;
+  while (turned < Math.PI - 1e-6) { q.target = h0 + Math.PI; g2.step(); turned = Math.abs(Game.angDiff(q.h, h0)); }
+  go(g2, q, q.h, 2);
+  ok(q.alive, 'מהיר: פניית פרסה חדה לא נחשבת פגיעה עצמית');
+  // כיבוש לולאה מלבנית במהיר
+  const g3 = new Game({ size: 60, speed: Game.speedFor('fast'), rand: seeded(95) });
+  const r = g3.addPlayer({}); g3.spawn(r, { x: 20, y: 20 });
+  go(g3, r, R, 12); go(g3, r, D, 10); go(g3, r, L, 12); go(g3, r, U, 8);
+  ok(r.alive && r.trail.length === 0 && own(g3, r, 26, 25) && own(g3, r, 30, 27) && !own(g3, r, 36, 25), 'מהיר: לולאה נסגרת ופנימה נכבש');
+}
+{
+  // בוטים במהיר: מתנהגים סביר (כובשים, לא מתאבדים) והשטח עקבי
+  for (const lvl of ['easy', 'hard']) {
+    const g = new Game({ size: 100, speed: Game.speedFor('fast'), rand: seeded(96) });
+    for (let i = 0; i < 8; i++) { const p = g.addPlayer({ isBot: true }); g.spawn(p); }
+    let deaths = 0, captures = 0, reasons = {};
+    for (let s = 0; s < 8000; s++) {
+      for (const p of g.players) if (p.alive && (g.tickNo + p.id) % g.AI_EVERY === 0) AI.think(g, p, lvl);
+      g.step();
+      for (const e of g.events) { if (e.type === 'death') { deaths++; reasons[e.reason] = (reasons[e.reason] || 0) + 1; } if (e.type === 'capture') captures++; }
+      g.events.length = 0;
+      if (s % 80 === 0) for (const p of g.players) if (!p.alive) g.spawn(p);
+    }
+    let cons = true; for (let k = 1; k <= 8; k++) if (realCount(g, k) !== g.counts[k]) cons = false;
+    ok(cons && captures > 150 && deaths < captures / 3, `מהיר/${lvl}: ${captures} כיבושים, ${deaths} מיתות ${JSON.stringify(reasons)}`);
+  }
+}
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);

@@ -6,7 +6,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------- הגדרות ושיאים ----------
-  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 6, emoji: '', mini: true, vib: true, sens: 'medium', fx: 'full', smode: 'normal' };
+  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 6, emoji: '', mini: true, vib: true, sens: 'medium', fx: 'full', smode: 'normal', speed: 'normal' };
   var S = load('kovesh.settings', DEFAULTS);
   if ((S.v || 0) < 4) { S.ctrl = S.joy ? 'joy' : 'point'; if (S.fps < 60) S.fps = 60; S.v = 4; save('kovesh.settings', S); } // מעבר ל-v4
   if ((S.v || 0) < 6) { S.emoji = ''; S.v = 6; save('kovesh.settings', S); } // v6: דמויות אימוג'י – הבחירה הישנה => אקראי
@@ -47,7 +47,7 @@
     el.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S[key] = parse ? parse(b.dataset.v) : b.dataset.v; paint(); save('kovesh.settings', S); });
     paint();
   }
-  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens'); seg('ctrlSeg', 'ctrl'); seg('fxSeg', 'fx'); seg('soloModeSeg', 'smode');
+  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens'); seg('ctrlSeg', 'ctrl'); seg('fxSeg', 'fx'); seg('soloModeSeg', 'smode'); seg('speedSeg', 'speed');
   $('nameInput').value = S.name;
   $('miniChk').checked = S.mini; $('vibChk').checked = S.vib;
 
@@ -133,7 +133,7 @@
     mode = 'solo'; match = null; $('timer').classList.add('hidden');
     livesStart = S.smode === '3' || S.smode === '5' ? Lives.norm(S.smode) : 0;
     S.name = $('nameInput').value.trim(); save('kovesh.settings', S);
-    g = new Game({ size: S.size });
+    g = new Game({ size: S.size, speed: Game.speedFor(S.speed) });   // v9.18: רגיל / מהיר
     startBest = { pct: BEST.pct, kills: BEST.kills };
     var myAv = 0, myCol = Avatars.list[myAv].color;   // צבעי השטח – פלטת הפסטל הנורדי
     var myEmo = Emoji.valid(S.emoji) ? S.emoji : Emoji.randomFree([]), usedEmo = [myEmo];
@@ -195,14 +195,15 @@
       pits.seed(g, packs);
     }
     updateHud(true);
+    if (g.SPEED > Game.BASE_SPEED) feed('🚀 מצב מהיר – כולם זזים מהר יותר');
     startLoop();
   }
   /* משחק רשת. cfg: { mode:'host'|'client', size, roster:[{name,avatar,color,isBot}], myId, diff, roundMs }
      במארח: סימולציה מלאה. בלקוח: משחק "מראה" שמתעדכן מתמונות המצב (בלי step). */
   function startMatch(cfg) {
     livesStart = cfg.lives ? Lives.norm(cfg.lives) : 0;
-    mode = cfg.mode; match = { diff: cfg.diff || 'easy', roundMs: cfg.roundMs, endTick: 0, msLeft: cfg.roundMs, lives: livesStart };
-    g = new Game({ size: cfg.size });
+    mode = cfg.mode; match = { diff: cfg.diff || 'easy', roundMs: cfg.roundMs, endTick: 0, msLeft: cfg.roundMs, lives: livesStart, speed: Game.normSpeed(cfg.speed) };
+    g = new Game({ size: cfg.size, speed: Game.speedFor(cfg.speed) });   // v9.18: המארח קובע; הלקוח מקבל ב-start
     cfg.roster.forEach(function (r) { g.addPlayer(r); });
     me = g.players[cfg.myId - 1];
     styleAll();
