@@ -57,6 +57,8 @@
 
   function angDiff(a, b) { var d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; }
   Game.angDiff = angDiff;
+  var ICE_TURN = 0.55, ICE_GRIP = 0.09;   // v9.19: קרח – 55% מקצב הפנייה, כיוון התנועה משיג ~9% מהפער בכל צעד
+  Game.ICE_TURN = ICE_TURN; Game.ICE_GRIP = ICE_GRIP;
   function segDist2(px, py, ax, ay, bx, by) {
     var dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? ((px - ax) * dx + (py - ay) * dy) / l : 0;
     t = t < 0 ? 0 : t > 1 ? 1 : t;
@@ -396,14 +398,19 @@
       p = ps[k];
       if (!p.alive) continue;
       p.px = p.x; p.py = p.y; p.ph = p.h;
-      if (p.turnInput) p.target = p.h + p.turnInput * maxTurn * 1.01;
+      var mt = p.ice ? maxTurn * ICE_TURN : maxTurn;   // v9.19 🧊 קרח: פנייה איטית יותר
+      if (p.turnInput) p.target = p.h + p.turnInput * mt * 1.01;
       var d = angDiff(p.target, p.h);
-      if (d > maxTurn) d = maxTurn; else if (d < -maxTurn) d = -maxTurn;
+      if (d > mt) d = mt; else if (d < -mt) d = -mt;
       p.h += d;
       if (p.h > Math.PI) p.h -= TAU; else if (p.h < -Math.PI) p.h += TAU;
+      // 🧊 קרח: כיוון התנועה (mh) נגרר אחרי כיוון הדמות – החלקה/אינרציה בפניות
+      var mv = p.h;
+      if (p.ice) { if (p.mh == null) p.mh = p.h; p.mh += angDiff(p.h, p.mh) * ICE_GRIP; mv = p.mh; }
+      else p.mh = p.h;
       var sv = v * (p.speedMul || 1);   // v9.5: חבילות הפתעה – האצה/האטה
-      p.x += Math.cos(p.h) * sv; p.y += Math.sin(p.h) * sv;
-      p.ux = p.px + Math.cos(p.h) * sv; p.uy = p.py + Math.sin(p.h) * sv;   // סוף מקטע התנועה, לא עטוף
+      p.x += Math.cos(mv) * sv; p.y += Math.sin(mv) * sv;
+      p.ux = p.px + Math.cos(mv) * sv; p.uy = p.py + Math.sin(mv) * sv;   // סוף מקטע התנועה, לא עטוף
       p.x = mod(p.x, this.W); p.y = mod(p.y, this.W);                       // עטיפה: אין קיר
       p.dead = null;
       moving.push(p);

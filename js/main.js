@@ -568,9 +568,11 @@
     for (k = 0; k < ps.length; k++) {
       p = ps[k]; if (!p.alive) continue;
       var step = baseStep * (p.speedMul || 1);
-      var dh = Game.angDiff(p.target, p.h); if (dh > maxTurn) dh = maxTurn; else if (dh < -maxTurn) dh = -maxTurn;
+      var mt = p.ice ? maxTurn * Game.ICE_TURN : maxTurn;
+      var dh = Game.angDiff(p.target, p.h); if (dh > mt) dh = mt; else if (dh < -mt) dh = -mt;
       p.rh = p.h + dh * alpha;
-      p.rx = p.x + Math.cos(p.rh) * step * alpha; p.ry = p.y + Math.sin(p.rh) * step * alpha;
+      var mvh = p.ice && p.mh != null && mode !== 'client' ? p.mh : p.rh;   // v9.19 🧊: התנועה בכיוון המחליק (לקוח: רק תמונות המארח)
+      p.rx = p.x + Math.cos(mvh) * step * alpha; p.ry = p.y + Math.sin(mvh) * step * alpha;
     }
     // מצלמה רציפה: נעה בהפרש העטוף הקצר, כך שבחציית תפר אין קפיצה (camX יכול לצאת מ-[0,W))
     if (me.alive) { camX += g.wd(me.rx - camX); camY += g.wd(me.ry - camY); }
@@ -602,9 +604,12 @@
     // שובלים – קווים מעוגלים
     ctx.setTransform(unitPx, 0, 0, unitPx, -vx0 * unitPx, -vy0 * unitPx);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = 0.8;
+    var lv = localVisual(), ghostA = lv && lv.id === 'ghost' ? 1 - lv.k : 1;   // v9.19 👻: השובל שלי שקוף לי בלבד
     for (k = 0; k < ps.length; k++) {
       p = ps[k];
       if (!p.alive || !p.trail.length) continue;
+      if (p === me && ghostA < 0.02) continue;
+      ctx.globalAlpha = p === me ? ghostA : 1;
       var t = p.trail, tl = t.length, lx = t[tl - 2], ly = t[tl - 1];
       // הראש "פרוש" ביחס לנקודה האחרונה; השובל כולו מוזז כך שהראש בעותק הקרוב למצלמה
       var hx0 = lx + g.wd(p.x - lx), hy0 = ly + g.wd(p.y - ly), hx1 = hx0 + (p.rx - p.x), hy1 = hy0 + (p.ry - p.y);
@@ -621,6 +626,7 @@
       }
       ctx.stroke();
     }
+    ctx.globalAlpha = 1;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     // v9.5: חבילות הפתעה – אימוג'י 🎁 עם פעימה זולה (לא במפה הקטנה)
@@ -678,6 +684,42 @@
     }
     // v9: אפקטים – שלב "מעל" (פסילות, טקסט צף, חלקיקים)
     FX.draw(ctx, fxView, now, 'over', Emoji);
+    var shade = !!(lv && (lv.id === 'dark' || lv.id === 'radar'));
+    if (shade) drawShade(lv, now, cw, ch, vx0, vy0);
+    if (shade !== miniFogged) { miniFogged = shade; mini.style.visibility = shade ? 'hidden' : ''; }   // המפה הקטנה לא עוקפת את הערפל
+  }
+  var miniFogged = false;
+  /* v9.19: אפקט חזותי מקומי של החבילה הפעילה שלי + עוצמת מעבר רכה (0→1→0) */
+  function localVisual() {
+    var a = me && me.alive && packs.activeOf(me.id), fx = a && Packs.effect(a.effectId);
+    if (!fx || !fx.visual || fx.visual === 'invert' || fx.visual === 'wide') return null;
+    // מארח/סולו לפי צעדי הסימולציה (נעצר בהשהיה); לקוח לפי השעון
+    var left = mode === 'client' ? (a.untilMs || 0) - Date.now() : (a.until - g.tickNo) * g.DT * 1000;
+    var fin = fx.visual === 'dark' ? 1500 : 500, el = fx.duration * 1000 - left;
+    var k = Math.max(0, Math.min(1, el / fin, left / fin));
+    k = k * k * (3 - 2 * k);   // smoothstep – בלי קפיצות ובלי הבהוב
+    return { id: fx.visual, k: k, el: el };
+  }
+  /* 🔦 החשכה / 📡 רדאר: מעבר רדיאלי אחד על כל המסך, עם חור סביב הראש שלי */
+  function drawShade(lv, now, cw, ch, vx0, vy0) {
+    var hx = (camX + g.wd(me.rx - camX) - vx0) * unitPx, hy = (camY + g.wd(me.ry - camY) - vy0) * unitPx;
+    var far = Math.hypot(cw, ch), r0, r1, col, alpha;
+    if (lv.id === 'dark') {
+      r0 = unitPx * 2.2; r1 = unitPx * 9; col = '8,10,20'; alpha = 0.86 * lv.k;
+    } else {
+      // רדאר: ערפל צפוף, נראות ~7 יח' סביבי; כל 2.5 שנ' פינג שמתרחב לכל המסך וחוזר (0.9 שנ', עקומת סינוס רכה)
+      var cyc = (lv.el % 2500) / 900, ping = cyc < 1 ? Math.sin(Math.PI * cyc) : 0;
+      r0 = unitPx * 4 + ping * far; r1 = r0 + unitPx * 3; col = '14,30,28'; alpha = 0.95 * lv.k;
+    }
+    if (alpha < 0.01) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    var gr = ctx.createRadialGradient(hx, hy, r0, hx, hy, r1);
+    gr.addColorStop(0, 'rgba(' + col + ',0)'); gr.addColorStop(1, 'rgba(' + col + ',' + alpha.toFixed(3) + ')');
+    ctx.fillStyle = gr; ctx.fillRect(0, 0, cw, ch);
+    if (lv.id === 'radar' && lv.k > 0.3) {   // טבעת סריקה דקה בגבול הנראות
+      ctx.strokeStyle = 'rgba(120,255,190,' + (0.45 * lv.k).toFixed(3) + ')'; ctx.lineWidth = Math.max(2, unitPx * 0.12);
+      ctx.beginPath(); ctx.arc(hx, hy, r0 + unitPx * 1.5, 0, Math.PI * 2); ctx.stroke();
+    }
   }
   var lastRender = 0, fxView = { camX: 0, camY: 0, vx0: 0, vy0: 0, vw: 0, vh: 0, unitPx: 1, wd: function (d) { return g.wd(d); } };
 

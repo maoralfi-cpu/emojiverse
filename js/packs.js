@@ -19,7 +19,12 @@
     speed:  { id: 'speed',  name: 'האצה',           emoji: '⚡', good: true,  duration: DURATION, speedMul: 1.55 },
     slow:   { id: 'slow',   name: 'האטה',           emoji: '🐢', good: false, duration: DURATION, speedMul: 0.55 },
     invert: { id: 'invert', name: 'היפוך צבעים',    emoji: '🌀', good: false, duration: DURATION, visual: 'invert' },
-    wide:   { id: 'wide',   name: 'שדה ראייה רחב',  emoji: '🔭', good: true,  duration: DURATION, visual: 'wide' }
+    wide:   { id: 'wide',   name: 'שדה ראייה רחב',  emoji: '🔭', good: true,  duration: DURATION, visual: 'wide' },
+    /* v9.19: ארבע הפתעות חדשות (סעיף 21) */
+    ice:    { id: 'ice',    name: 'קרח',            emoji: '🧊', good: false, duration: 6, ice: true },
+    ghost:  { id: 'ghost',  name: 'שובל נעלם',      emoji: '👻', good: false, duration: 6, visual: 'ghost' },
+    dark:   { id: 'dark',   name: 'החשכה',          emoji: '🔦', good: false, duration: 7, visual: 'dark' },
+    radar:  { id: 'radar',  name: 'רדאר',           emoji: '📡', good: false, duration: 7, visual: 'radar' }
   };
   var EFFECT_IDS = Object.keys(EFFECTS);
 
@@ -151,6 +156,7 @@
     var until = nowTick + Math.round(e.duration / (g.DT || 1 / 60));
     this.active[player.id] = { effectId: e.id, until: until, untilMs: Date.now() + e.duration * 1000 };
     player.speedMul = e.speedMul || 1;
+    player.ice = !!e.ice; player.mh = player.h;
     return this.active[player.id];
   };
 
@@ -182,7 +188,7 @@
       if (g.tickNo >= a.until) {
         e = EFFECTS[a.effectId];
         var pl = g.players[pid - 1];
-        if (pl) pl.speedMul = 1;
+        if (pl) { pl.speedMul = 1; pl.ice = false; }
         this.events.push({ type: 'end', playerId: +pid, effectId: a.effectId });
         delete this.active[pid];
       }
@@ -191,13 +197,14 @@
     for (k = 0; k < g.players.length; k++) {
       p = g.players[k];
       if (!p.alive && this.active[p.id]) {
-        p.speedMul = 1;
+        p.speedMul = 1; p.ice = false;
         this.events.push({ type: 'end', playerId: p.id, effectId: this.active[p.id].effectId });
         delete this.active[p.id];
       } else if (p.alive && this.active[p.id]) {
         p.speedMul = this.speedMul(p.id);
+        var ae = EFFECTS[this.active[p.id].effectId]; p.ice = !!(ae && ae.ice);
       } else if (p.alive) {
-        p.speedMul = 1;
+        p.speedMul = 1; p.ice = false;
       }
     }
 
@@ -264,7 +271,7 @@
 
   P.clientEnd = function (g, playerId) {
     var p = g && g.players[playerId - 1];
-    if (p) p.speedMul = 1;
+    if (p) { p.speedMul = 1; p.ice = false; }
     delete this.active[playerId];
   };
 

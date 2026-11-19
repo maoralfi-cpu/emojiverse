@@ -76,6 +76,37 @@ console.log('לא על ראש שחקן + תקרת כמות');
   ok(packs.packs.length <= Packs.maxFor(g.W), 'לא עוברים את התקרה (' + packs.packs.length + '/' + Packs.maxFor(g.W) + ')');
 }
 
+console.log('v9.19: ארבע ההפתעות החדשות');
+{
+  ['ice', 'ghost', 'dark', 'radar'].forEach(function (id) {
+    const e = Packs.effect(id);
+    ok(e && e.emoji && e.duration >= 5 && e.duration <= 8, id + ': קיים במנגנון עם משך 5–8 שנ׳');
+  });
+  // קרח: פנייה איטית + כיוון תנועה נגרר; תפוגה מחזירה למצב רגיל
+  function turnRun(ice, speed) {
+    const g = new Game({ size: 80, rand: seeded(5), speed: speed });
+    const p = g.addPlayer({}); g.spawn(p, { x: 40, y: 40 });
+    const packs = new Packs({ rand: seeded(5) }); packs.reset();
+    p.h = p.target = p.mh = 0;
+    if (ice) packs.apply(g, p, 'ice', g.tickNo);
+    p.target = Math.PI / 2;
+    for (let i = 0; i < 10; i++) g.step();
+    const moveAng = Math.atan2(Game.wrapDelta(p.y - p.py, g.W), Game.wrapDelta(p.x - p.px, g.W));
+    return { p, g, packs, h: p.h, slip: Math.abs(Game.angDiff(p.h, moveAng)) };
+  }
+  const n = turnRun(false), ic = turnRun(true);
+  ok(ic.h < n.h * 0.7, 'קרח: מסתובב לאט יותר (' + ic.h.toFixed(2) + ' < ' + n.h.toFixed(2) + ')');
+  ok(n.slip < 1e-6 && ic.slip > 0.05, 'קרח: כיוון התנועה מחליק אחרי הדמות (' + ic.slip.toFixed(2) + ')');
+  const f = turnRun(true, Game.speedFor('fast'));
+  ok(isFinite(f.p.x) && f.p.ice, 'קרח עובד גם במצב מהיר');
+  ic.packs.active[ic.p.id].until = ic.g.tickNo; ic.packs.tick(ic.g);
+  ok(!ic.p.ice && ic.p.speedMul === 1, 'קרח: אחרי תפוגה חוזר לרגיל');
+  ic.packs.apply(ic.g, ic.p, 'ice', ic.g.tickNo); ic.packs.clientEnd(ic.g, ic.p.id);
+  ok(!ic.p.ice, 'קרח: סיום מהמארח (לקוח) מנקה');
+  ic.packs.apply(ic.g, ic.p, 'ice', ic.g.tickNo); ic.packs.apply(ic.g, ic.p, 'dark', ic.g.tickNo);
+  ok(!ic.p.ice, 'החלפת אפקט מבטלת קרח');
+}
+
 console.log('בוט יכול לאסוף');
 {
   const rand = seeded(3);

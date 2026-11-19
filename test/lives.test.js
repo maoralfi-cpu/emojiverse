@@ -247,7 +247,7 @@ test('לב לא מופיע כשכל השחקנים הפעילים בתקרה; מ
 test('מצב רגיל: לב אף פעם לא מופיע, ומאגר ה-🎁 לא השתנה', () => {
   const { g, packs } = packGame();
   for (let i = 0; i < 5000; i++) { g.tickNo++; packs.tick(g); packs.packs.forEach(p => assert.notEqual(p.kind, 'life')); }
-  assert.deepEqual(Packs.EFFECT_IDS, ['speed', 'slow', 'invert', 'wide']);
+  assert.deepEqual(Packs.EFFECT_IDS, ['speed', 'slow', 'invert', 'wide', 'ice', 'ghost', 'dark', 'radar']);
   assert.ok(!Packs.effect('life'));
   assert.equal(packs.spawnHeart(g), null);
 });
