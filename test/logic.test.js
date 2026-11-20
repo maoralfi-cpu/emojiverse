@@ -629,5 +629,38 @@ console.log('v9.18: מצב מהיר');
     ok(cons && captures > 150 && deaths < captures / 3, `מהיר/${lvl}: ${captures} כיבושים, ${deaths} מיתות ${JSON.stringify(reasons)}`);
   }
 }
+console.log('v9.20: תנועה ישרה לא נפסלת על השובל של עצמה (רעש עיגול במקטעים מקבילים)');
+{
+  // מקטעים על אותו קו ורחוקים זה מזה – אסור שייחשבו חותכים
+  const a = [0.70075898, 83.49552335, 0.38669236, 83.70553394], b = [44.04195173, 54.51406222, 43.72788512, 54.72407281];
+  ok(Game.segSegDist2(a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3]) > 1, 'segSegDist2: מקטעים קוויים מרוחקים אינם "חותכים"');
+  ok(Game.segSegDist2(0, 0, 2, 0, 1, 0, 3, 0) === 0, 'segSegDist2: מקטעים חופפים על אותו קו – מרחק 0');
+  ok(Game.segSegDist2(0, -1, 0, 1, -1, 0, 1, 0) === 0, 'segSegDist2: חיתוך רגיל עדיין 0');
+  // נסיעה ישרה מההולדה בכל המהירויות (רגיל/מהיר × ⚡/🐢) – אף פסילה 'self'
+  let runs = 0, self = 0;
+  for (const speed of ['normal', 'fast']) for (const mul of [1, 0.55, 1.55]) for (let seed = 1; seed < 300; seed++) {
+    const r = seeded(seed * 13 + 5), g = new Game({ size: 100, speed: Game.speedFor(speed), rand: seeded(seed) });
+    const me = g.addPlayer({ name: 'me' }); g.spawn(me, { x: r() * 100, y: r() * 100 });
+    me.target = r() * Math.PI * 2; me.speedMul = mul; runs++;
+    for (let t = 0; t < 240 && me.alive; t++) { g.step(); for (const e of g.events) if (e.type === 'death' && e.reason === 'self') self++; g.events.length = 0; }
+  }
+  ok(self === 0, `נסיעה ישרה: ${runs} ריצות, ${self} פסילות 'self'`);
+}
+console.log('v9.20: שליט היקום – כל המפה');
+{
+  const g = new Game({ size: 40, rand: seeded(3) });
+  const a = g.addPlayer({ name: 'A' }), b = g.addPlayer({ name: 'B', isBot: true });
+  g.spawn(a, { x: 10, y: 10 }); g.spawn(b, { x: 30, y: 30 });
+  ok(g.ruler() === null, 'בהתחלה אין שליט');
+  const N = g.G * g.G, need = Math.ceil(Game.RULER_FRAC * N);
+  for (let i = 0; i < need - 1; i++) g.setOwner(i, a.id);
+  for (let i = need - 1; i < N; i++) g.setOwner(i, b.id);
+  ok(g.ruler() === null, 'פחות מ-99.9% – עדיין אין שליט');
+  g.setOwner(need - 1, a.id);
+  ok(g.ruler() === a, '99.9% – A הוא שליט היקום');
+  for (let i = 0; i < N; i++) g.setOwner(i, a.id);
+  ok(g.ruler() === a && g.pct(a) === 100, '100% – שליט');
+  a.alive = false; ok(g.ruler() === null, 'שחקן מת אינו שליט');
+}
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
 process.exit(fail ? 1 : 0);

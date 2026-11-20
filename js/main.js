@@ -314,6 +314,8 @@
     g.step();
     for (var e = 0; e < g.events.length; e++) handleEvent(g.events[e]);
     g.events.length = 0;
+    // v9.20 שליט היקום: מי שכבש את כל המפה – המשחק/הסיבוב נגמר מיד (סולו/מארח; הלקוח מקבל תוצאות)
+    if (mode !== 'client' && state === 'play' && !g.rulerId) { var R = g.ruler(); if (R) { declareRuler(R); if (state !== 'play' && state !== 'dying') return; } }
     // v9.5: חבילות הפתעה (מארח/סולו)
     if (mode !== 'client') {
       var pev = packs.tick(g);
@@ -322,7 +324,7 @@
     for (k = 0; k < ps.length; k++) {
       var p = ps[k];
       // מצב חיים: חוזרים רק אם נשארו חיים (וגם האדם בסולו); מצב רגיל – בדיוק כמו קודם
-      if (!p.alive && !p.gone && (p.isBot || mode === 'host' || (livesStart && mode === 'solo')))
+      if (!g.rulerId && !p.alive && !p.gone && (p.isBot || mode === 'host' || (livesStart && mode === 'solo')))
         Lives.respawnStep(g, p, !!livesStart, RESPAWN_TICKS, performance.now());
     }
     if (livesStart && state === 'play') checkLivesEnd();
@@ -820,7 +822,12 @@
     $('overKills').textContent = kills;
     $('overTitle').textContent = (best > startBest.pct || kills > startBest.kills) ? 'שיא חדש! 🏆' : (livesStart ? 'הודחת!' : 'נפסלת!');
     if (livesStart) $('overReason').textContent = 'נגמרו החיים' + (r ? ' · ' + r : '');
-    $('overCard').classList.remove('win');
+    $('overCard').classList.remove('win'); $('overCard').classList.remove('ruler');
+    if (ev.reason === 'ruler') {   // v9.20: בוט כבש את כל המפה
+      $('overTitle').textContent = '👑 שליט היקום: ' + ev.killer.name;
+      $('overReason').textContent = rulerText(ev.killer);
+      $('overCard').classList.add('ruler');
+    }
     showBest();
     // ממשיכים לצייר רגע קט בשביל האפקט, ואז עוצרים הכול
     setTimeout(function () {
@@ -829,8 +836,19 @@
     }, 900);
   }
 
-  /* v9.13 סולו במצב חיים: נשארת אחרון/ה עם חיים – ניצחון */
-  function soloWin() {
+  /* v9.20 שליט היקום: עוצרים חזרות לחיים ומסיימים. מצב חיים – המנצח הוא השליט */
+  function declareRuler(R) {
+    g.rulerId = R.id;
+    if (livesStart) livesEnd = { at: g.tickNo, winners: [R.id], ruler: R.id };
+    feed('👑 ' + nm(R) + ' – שליט/ת היקום!');
+    if (mode === 'host') { if (MPH) MPH.roundOver(); return; }
+    if (R === me) soloWin(R);
+    else gameOver({ reason: 'ruler', killer: R });
+  }
+  function rulerText(R) { return (R.emoji ? R.emoji + ' ' : '') + (R === me ? 'כבשת' : R.name + ' כבש/ה') + ' את כל המפה'; }
+
+  /* v9.13 סולו במצב חיים: נשארת אחרון/ה עם חיים – ניצחון. v9.20: ruler = ניצחון ב-100% */
+  function soloWin(ruler) {
     clearPackVisual();
     state = 'dying';
     buzz(60);
@@ -838,12 +856,13 @@
     if (best > BEST.pct) BEST.pct = best;
     if (kills > BEST.kills) BEST.kills = kills;
     save('kovesh.best', BEST);
-    $('overTitle').textContent = 'ניצחת! 🏆';
-    $('overReason').textContent = 'נשארת אחרון/ה בזירה · ' + Lives.hearts(me.lives, livesStart);
+    $('overTitle').textContent = ruler ? '👑 שליט היקום' : 'ניצחת! 🏆';
+    $('overReason').textContent = ruler ? rulerText(me) : 'נשארת אחרון/ה בזירה · ' + Lives.hearts(me.lives, livesStart);
     $('overAvatar').src = Emoji.dataURL(me.emoji, 160, me.color, lineCss[me.id]);
     $('overPct').textContent = best.toFixed(1) + '%';
     $('overKills').textContent = kills;
     $('overCard').classList.add('win');
+    $('overCard').classList.toggle('ruler', !!ruler);
     showBest();
     setTimeout(function () {
       if (state !== 'dying') return;
@@ -949,5 +968,5 @@
   };
   // חשיפה לבדיקות אוטומטיות בלבד
   window.__evBooted = true;
-  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get pits() { return pits; }, get packs() { return packs; }, get livesStart() { return livesStart; }, get livesEnd() { return livesEnd; }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
+  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get pits() { return pits; }, get packs() { return packs; }, get livesStart() { return livesStart; }, get livesEnd() { return livesEnd; }, declareRuler: function (p) { declareRuler(p); }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
 })();

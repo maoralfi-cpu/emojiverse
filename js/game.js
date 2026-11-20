@@ -70,7 +70,9 @@
   function segSegDist2(ax, ay, bx, by, cx, cy, dx, dy) {
     var d1x = bx - ax, d1y = by - ay, d2x = dx - cx, d2y = dy - cy;
     var den = d1x * d2y - d1y * d2x;
-    if (den !== 0) {
+    // v9.20: מקטעים מקבילים/על אותו קו (תנועה ישרה לאורך השובל) – רעש עיגול ב-den הקטן גרם ל"חיתוך" מדומה
+    // ולפסילה 'self' בלי סיבה. במקרה כזה מסתפקים במרחקי הקצוות (מדויקים גם לקווים חופפים).
+    if (den * den > 1e-12 * (d1x * d1x + d1y * d1y) * (d2x * d2x + d2y * d2y)) {
       var t = ((cx - ax) * d2y - (cy - ay) * d2x) / den, u = ((cx - ax) * d1y - (cy - ay) * d1x) / den;
       if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return 0;
     }
@@ -540,6 +542,13 @@
   };
 
   P.pct = function (p) { return 100 * this.counts[p.id] / (this.G * this.G); };
+  /* v9.20 שליט היקום: שחקן חי שמחזיק ≥99.9% מהמפה (סעיף 22). מחזיר את השחקן או null */
+  Game.RULER_FRAC = 0.999;
+  P.ruler = function () {
+    var need = Math.ceil(Game.RULER_FRAC * this.G * this.G);
+    for (var k = 0; k < this.players.length; k++) { var p = this.players[k]; if (p.alive && !p.gone && this.counts[p.id] >= need) return p; }
+    return null;
+  };
 
   /* חיפוש התא הקרוב ביותר בשטח של השחקן (טבעות מתרחבות). מחזיר נקודה בעולם או null */
   P.nearestOwn = function (p, maxR) {

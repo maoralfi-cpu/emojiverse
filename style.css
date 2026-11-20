@@ -205,6 +205,12 @@ html.safe .card>*{margin:6px 0}
 #rankList li.win{background:#fff1c9}
 #rankList .lv{font-size:clamp(11px,1.9dvh,13px);white-space:nowrap}
 #overCard.win h2{color:#7a5a12}
+/* v9.20 שליט היקום – הכרזה מיוחדת אבל רגועה (כניסה רכה אחת, בלי הבהוב) */
+#overCard.ruler{background:linear-gradient(180deg,#fff6dc,#fbfcfe 70%);border:2px solid #e9c46a}
+#overCard.ruler h2{color:#7a5a12;font-size:clamp(24px,4.6dvh,32px);animation:rulerIn .6s ease-out both}
+.winner.ruler{background:linear-gradient(90deg,#fff1c9,#ffe7a3);border:1px solid #e9c46a;font-size:clamp(17px,3.2dvh,22px);animation:rulerIn .6s ease-out both}
+@keyframes rulerIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#overCard.ruler h2,.winner.ruler{animation:none}}
 /* v9.13: שורת "מצב משחק" נוספה ללובי – מפצים בגובה: "בלי בוטים" בשורה אחת */
 #mpBotsSeg button{white-space:nowrap}
 #mpBotsSeg button[data-v="0"]{flex:1.9;font-size:clamp(11px,1.9dvh,14px)}

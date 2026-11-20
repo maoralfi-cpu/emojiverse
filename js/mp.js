@@ -375,6 +375,7 @@
       var presentKeys = lastRank.map(function (r) { return r.key; }).filter(Boolean);
       var totalsList = Awards.present(matchTotals, presentKeys);
       lastResults = { t: 'results', rank: lastRank, totals: totalsList, awards: Awards.awards(totalsList), round: matchRound };
+      if (g.rulerId) { var rp = g.players[g.rulerId - 1]; lastResults.ruler = { id: rp.id, name: rp.name, emoji: rp.emoji }; }   // v9.20 שליט היקום
       if (lv) { lastResults.lives = lv; lastResults.win = lastRank.filter(function (r) { return r.win; }).map(function (r) { return { name: r.name, emoji: r.emoji }; }); }
       Core.endRound();
       broadcast(Net.encodeSnap(g, tracker, 0, false));
@@ -426,7 +427,11 @@
       var names = win.map(function (p) { return (p.emoji ? p.emoji + ' ' : '') + p.name; }).join(' · ');
       wl.textContent = win.length > 1 ? '🤝 תיקו: ' + names : '🏆 המנצח/ת: ' + names;
     }
-    wl.classList.toggle('hidden', !win.length);
+    // v9.20: שליט היקום – הכרזה מיוחדת (גוברת על שורת המנצח)
+    var ruler = payload && payload.ruler;
+    if (ruler) wl.textContent = '👑 שליט היקום: ' + (ruler.emoji ? ruler.emoji + ' ' : '') + ruler.name;
+    wl.classList.toggle('ruler', !!ruler);
+    wl.classList.toggle('hidden', !win.length && !ruler);
     var tag = $('roundTag');
     tag.textContent = round > 1 ? ' · אחרי ' + round + ' סיבובים' : (round === 1 ? ' · סיבוב 1' : '');
     var ol = $('rankList'); ol.innerHTML = '';
@@ -450,6 +455,7 @@
         li.appendChild(lvs);
       }
       li.appendChild(st);
+      if (ruler && r.id === ruler.id) li.classList.add('win');
       if (r.id === myPid) li.classList.add('me');
       ol.appendChild(li);
     });
