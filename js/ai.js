@@ -15,7 +15,7 @@
 
   function dangerAt(g, p, x, y) {
     // v7: טורוס – אין קירות; רק השובל העצמי מסוכן (trailDist2 כבר עוטף)
-    return (g.pitSystem && g.pitSystem.dangerAt(g, x, y, 1.4)) || g.trailDist2(p, x, y, g.SELF_SKIP, false) < 1.2 * 1.2;
+    return (g.pitSystem && g.pitSystem.dangerAt(g, x, y, 1.4)) || (g.itemSystem && g.itemSystem.list.length && g.itemSystem.dangerAt(g, p, x, y, 1.4)) || g.trailDist2(p, x, y, g.SELF_SKIP, false) < 1.2 * 1.2;
   }
   function safeHeading(g, p, a, probe) {
     var c = Math.cos(a), s = Math.sin(a);
@@ -95,6 +95,18 @@
       }
     }
 
+    // v9.21 מצב מלכודת: שימוש פשוט בפריט, ובריחה מפצצה חיה
+    var IS = g.itemSystem;
+    if (IS) {
+      if (p.item === 'bomb') {
+        for (var e = 0; e < g.players.length; e++) {
+          var en = g.players[e];
+          if (en !== p && en.alive && g.dist2(en.x, en.y, p.x, p.y) < 4 * 4) { IS.drop(g, p); break; }
+        }
+      } else if (p.item === 'trap' && g.rand() < 0.01) IS.drop(g, p);
+      var fl = IS.list.length ? IS.fleeAngle(g, p) : null;
+      if (fl != null) want = fl;
+    }
     // בדיקת בטיחות: הכיוון הקרוב לרצוי שאינו מוביל לשובל העצמי
     var chosen = want;
     for (var o = 0; o < OFFS.length; o++) {

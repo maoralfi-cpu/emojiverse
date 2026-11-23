@@ -38,7 +38,14 @@
     this.events = [];
     this.lifeStart = 0;        // 0 = מצב סיבובים (אין לבבות)
     this.heartCD = 0;
+    this.items = false;        // v9.21 מצב מלכודת: 🪤/💣 בתוך הקופסאות
   }
+
+  /* v9.21: פריטי מצב מלכודת – נכנסים למאגר רק כשהמצב פעיל; לא מפעילים כלום באיסוף, רק נשמרים בתא */
+  var ITEM_IDS = ['trap', 'bomb'];
+  var ITEMS = { trap: { id: 'trap', name: 'מלכודת', emoji: '🪤', item: true }, bomb: { id: 'bomb', name: 'פצצה', emoji: '💣', item: true } };
+  Packs.ITEM_IDS = ITEM_IDS;
+  Packs.isItem = function (id) { return id === 'trap' || id === 'bomb'; };
 
   Packs.EFFECTS = EFFECTS;
   Packs.EFFECT_IDS = EFFECT_IDS;
@@ -53,12 +60,12 @@
     return Math.max(2, Math.round((W || 100) / 45));   // 80→2, 100→2, 130→3
   };
 
-  Packs.effect = function (id) { return EFFECTS[id] || null; };
+  Packs.effect = function (id) { return EFFECTS[id] || ITEMS[id] || null; };
 
   var P = Packs.prototype;
 
   P.reset = function () {
-    this.lifeStart = 0; this.lifeCap = 0; this.heartCD = 0;
+    this.lifeStart = 0; this.lifeCap = 0; this.heartCD = 0; this.items = false;
     this.packs.length = 0;
     this.nextId = 1;
     this.spawnCD = 40;         // הופעה ראשונה אחרי ~0.7 שנ'
@@ -72,6 +79,9 @@
     this.lifeCap = this.lifeStart ? this.lifeStart + 2 : 0;
     this.heartCD = HEART_FIRST;
   };
+  P.setItems = function (on) { this.items = !!on; };
+  /* המאגר: 8 ההפתעות, ובמצב מלכודת גם 🪤 ו־💣 – כולם באותו סיכוי */
+  P.pool = function () { return this.items ? EFFECT_IDS.concat(ITEM_IDS) : EFFECT_IDS; };
   P.regularCount = function () { var n = 0; for (var i = 0; i < this.packs.length; i++) if (this.packs[i].kind !== 'life') n++; return n; };
   P.heartCount = function () { return this.packs.length - this.regularCount(); };
   function canGain(p, cap) { return p.alive && !p.gone && (p.lives || 0) > 0 && (p.lives || 0) < cap; }
@@ -137,7 +147,7 @@
     if (this.regularCount() >= Packs.maxFor(g.W)) return null;
     var pos = forced || this.findPos(g);
     if (!pos) return null;
-    var eid = EFFECT_IDS[Math.floor(this.rand() * EFFECT_IDS.length)];
+    var pool = this.pool(), eid = pool[Math.floor(this.rand() * pool.length)];
     var pack = { id: this.nextId++, x: g.wrap(pos.x), y: g.wrap(pos.y), effectId: eid };
     this.packs.push(pack);
     this.events.push({ type: 'spawn', pack: { id: pack.id, x: pack.x, y: pack.y } }); // בלי effect – הפתעה
@@ -172,6 +182,11 @@
     }
     var eid = pack.effectId;
     this.removePack(pack.id);
+    if (ITEMS[eid]) {   // v9.21: פריט נכנס לתא היחיד (מחליף את הקודם), בלי להשפיע על אפקט פעיל
+      player.item = eid;
+      this.events.push({ type: 'pick', packId: pack.id, playerId: player.id, effectId: eid });
+      return ITEMS[eid];
+    }
     this.apply(g, player, eid, g.tickNo);
     this.events.push({ type: 'pick', packId: pack.id, playerId: player.id, effectId: eid });
     return EFFECTS[eid];
@@ -265,6 +280,7 @@
     this.removePack(packId);
     if (effectId === 'life') return LIFE;   // מספר החיים מגיע מהמארח בהודעת lives
     var p = g && g.players[playerId - 1];
+    if (ITEMS[effectId]) { if (p) p.item = effectId; return ITEMS[effectId]; }
     if (p) this.apply(g, p, effectId, g.tickNo || 0);
     return EFFECTS[effectId] || null;
   };

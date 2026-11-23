@@ -216,3 +216,7 @@ html.safe .card>*{margin:6px 0}
 #mpBotsSeg button[data-v="0"]{flex:1.9;font-size:clamp(11px,1.9dvh,14px)}
 /* v9.18: שורת "מהירות" נוספה ללובי */
 #lobby .card>.col:last-child{flex-shrink:0}   /* ההגדרות והכפתורים לא מתכווצים – רשימת השחקנים גוללת במקומם */
+
+/* v9.21 מצב מלכודת: כפתור הטלה גדול ועגול – שמאל למטה, מעל המפה הקטנה (ההיגוי/ג'ויסטיק בימין, ⏱️ באמצע) */
+#itemBtn{position:absolute;left:14px;bottom:calc(140px + env(safe-area-inset-bottom));width:76px;height:76px;border-radius:50%;margin:0;padding:0;pointer-events:auto;touch-action:none;font-size:40px;line-height:76px;text-align:center;background:rgba(251,252,254,.92);border:3px solid rgba(191,97,106,.55);box-shadow:0 4px 14px rgba(46,52,64,.18);-webkit-tap-highlight-color:transparent;user-select:none;z-index:7}
+#itemBtn:active{transform:scale(.94)}

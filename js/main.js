@@ -6,7 +6,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------- הגדרות ושיאים ----------
-  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 6, emoji: '', mini: true, vib: true, sens: 'medium', fx: 'full', smode: 'normal', speed: 'normal' };
+  var DEFAULTS = { name: '', avatar: 0, diff: 'normal', bots: 6, size: 100, fps: 60, dpr: 2, joy: false, ctrl: 'point', v: 6, emoji: '', mini: true, vib: true, sens: 'medium', fx: 'full', smode: 'normal', speed: 'normal', traps: 'off' };
   var S = load('kovesh.settings', DEFAULTS);
   if ((S.v || 0) < 4) { S.ctrl = S.joy ? 'joy' : 'point'; if (S.fps < 60) S.fps = 60; S.v = 4; save('kovesh.settings', S); } // מעבר ל-v4
   if ((S.v || 0) < 6) { S.emoji = ''; S.v = 6; save('kovesh.settings', S); } // v6: דמויות אימוג'י – הבחירה הישנה => אקראי
@@ -39,6 +39,7 @@
   var spectId = 0, lastLivesKey = '';
   var pits = new Pits();
   var packs = new Packs();   // v9.5 חבילות הפתעה
+  var items = new Items(), itemsOn = false, lastItemsKey = '', itemFx = [], booms = [], shownItem = null;   // v9.21 מצב מלכודת
 
   // ---------- תפריט ----------
   function seg(id, key, parse) {
@@ -47,7 +48,7 @@
     el.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S[key] = parse ? parse(b.dataset.v) : b.dataset.v; paint(); save('kovesh.settings', S); });
     paint();
   }
-  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens'); seg('ctrlSeg', 'ctrl'); seg('fxSeg', 'fx'); seg('soloModeSeg', 'smode'); seg('speedSeg', 'speed');
+  seg('diffSeg', 'diff'); seg('botsSeg', 'bots', Number); seg('sizeSeg', 'size', Number); seg('fpsSeg', 'fps', Number); seg('dprSeg', 'dpr', Number); seg('sensSeg', 'sens'); seg('ctrlSeg', 'ctrl'); seg('fxSeg', 'fx'); seg('soloModeSeg', 'smode'); seg('speedSeg', 'speed'); seg('trapSeg', 'traps');
   $('nameInput').value = S.name;
   $('miniChk').checked = S.mini; $('vibChk').checked = S.vib;
 
@@ -132,6 +133,7 @@
   function startGame() {
     mode = 'solo'; match = null; $('timer').classList.add('hidden');
     livesStart = S.smode === '3' || S.smode === '5' ? Lives.norm(S.smode) : 0;
+    itemsOn = Items.norm(S.traps) === 'on';
     S.name = $('nameInput').value.trim(); save('kovesh.settings', S);
     g = new Game({ size: S.size, speed: Game.speedFor(S.speed) });   // v9.18: רגיל / מהיר
     startBest = { pct: BEST.pct, kills: BEST.kills };
@@ -175,6 +177,8 @@
     effects = []; FX.clear(); camX = me.x; camY = me.y; layer = null;
     packs.reset(); pits.reset(); g.pitSystem = pits;
     if (livesStart) packs.setLives(livesStart);
+    packs.setItems(itemsOn);
+    items.reset(); g.itemSystem = itemsOn && mode !== 'client' ? items : null; lastItemsKey = ''; itemFx = []; booms = []; updateItemBtn(true);
     livesEnd = null; spectId = 0; lastLivesKey = '';
     $('hud').classList.toggle('lives', !!livesStart);
     updateLivesHud();
@@ -196,13 +200,15 @@
     }
     updateHud(true);
     if (g.SPEED > Game.BASE_SPEED) feed('🚀 מצב מהיר – כולם זזים מהר יותר');
+    if (itemsOn) feed('🪤 מצב מלכודת – 🎁 יכולה להכיל מלכודת או פצצה');
     startLoop();
   }
   /* משחק רשת. cfg: { mode:'host'|'client', size, roster:[{name,avatar,color,isBot}], myId, diff, roundMs }
      במארח: סימולציה מלאה. בלקוח: משחק "מראה" שמתעדכן מתמונות המצב (בלי step). */
   function startMatch(cfg) {
     livesStart = cfg.lives ? Lives.norm(cfg.lives) : 0;
-    mode = cfg.mode; match = { diff: cfg.diff || 'easy', roundMs: cfg.roundMs, endTick: 0, msLeft: cfg.roundMs, lives: livesStart, speed: Game.normSpeed(cfg.speed) };
+    itemsOn = Items.norm(cfg.traps) === 'on';
+    mode = cfg.mode; match = { diff: cfg.diff || 'easy', roundMs: cfg.roundMs, endTick: 0, msLeft: cfg.roundMs, lives: livesStart, speed: Game.normSpeed(cfg.speed), traps: itemsOn ? 'on' : 'off' };
     g = new Game({ size: cfg.size, speed: Game.speedFor(cfg.speed) });   // v9.18: המארח קובע; הלקוח מקבל ב-start
     cfg.roster.forEach(function (r) { g.addPlayer(r); });
     me = g.players[cfg.myId - 1];
@@ -278,6 +284,7 @@
     if (lastFrame && now - lastFrame < interval - 2) return;  // מגבלת פריימים
     var dt = lastFrame ? Math.min(250, now - lastFrame) : 0;
     lastFrame = now;
+    updateItemBtn(false);
     if (mode === 'client') {   // לקוח: אין סימולציה – מיקומים מאינטרפולציה של תמונות המצב
       clientKeys();
       if (MPH) MPH.clientFrame(now);
@@ -312,8 +319,10 @@
     }
     for (var k = 0; k < ps.length; k++) if (ps[k].alive && ps[k].isBot && (g.tickNo + ps[k].id) % g.AI_EVERY === 0) AI.think(g, ps[k], match ? match.diff : S.diff);
     g.step();
+    if (itemsOn && items.events.length) { var iev = items.events.splice(0); for (var ie = 0; ie < iev.length; ie++) handleItemEvent(iev[ie]); }
     for (var e = 0; e < g.events.length; e++) handleEvent(g.events[e]);
     g.events.length = 0;
+    if (!g) return;
     // v9.20 שליט היקום: מי שכבש את כל המפה – המשחק/הסיבוב נגמר מיד (סולו/מארח; הלקוח מקבל תוצאות)
     if (mode !== 'client' && state === 'play' && !g.rulerId) { var R = g.ruler(); if (R) { declareRuler(R); if (state !== 'play' && state !== 'dying') return; } }
     // v9.5: חבילות הפתעה (מארח/סולו)
@@ -328,6 +337,10 @@
         Lives.respawnStep(g, p, !!livesStart, RESPAWN_TICKS, performance.now());
     }
     if (livesStart && state === 'play') checkLivesEnd();
+    if (mode === 'host' && itemsOn && MPH && MPH.onItems) {   // v9.21: מצב פריטים לאורחים – רק כשמשהו השתנה
+      var ns = items.netState(g);
+      if (ns.key !== lastItemsKey || itemFx.length) { lastItemsKey = ns.key; if (itemFx.length) ns.msg.fx = itemFx; itemFx = []; MPH.onItems(ns.msg); }
+    }
     if (mode === 'host') {
       match.msLeft = Math.max(0, (match.endTick - g.tickNo) * TICK_MS);
       if (MPH) MPH.onTick();
@@ -356,6 +369,7 @@
       if (v === me) { myDeath(ev); return; }
       if (livesStart && v.lives <= 0 && ev.reason !== 'left') { feed(nm(v) + ' הודח/ה 💀'); return; }
       if (ev.reason === 'pit') { feed(nm(v) + ' נפל/ה לבור מלכודת 🌋'); return; }
+      if (ev.reason === 'bomb') { feed(bombText(v, ev.killer)); return; }
       if (ev.reason === 'left') { feed(nm(v) + ' עזב/ה את המשחק'); return; }
       if (ev.reason === 'enclosed') { feed(nm(v) + ' נכלא/ה בשטח של ' + (ev.killer === me ? 'אותך' : nm(ev.killer)) + (ev.killer === me ? '! ⚔️' : '')); return; }
       if (ev.killer === me) feed('הבסת את ' + nm(v) + '! ⚔️');
@@ -364,7 +378,7 @@
   }
   function myDeath(ev) {
     buzz(150);
-    var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש', enclosed: 'נכלאת בשטח', pit: 'נפלת לבור מלכודת 🌋' };
+    var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש', enclosed: 'נכלאת בשטח', pit: 'נפלת לבור מלכודת 🌋', bomb: 'פצצה 💣' };
     var why = (reasons[ev.reason] || '') + (ev.killer ? ' – ' + nm(ev.killer) : '');
     me.diedAt = performance.now();
     if (livesStart && (me.lives || 0) <= 0) { feed('הודחת! (' + why + ') · צופים עד הסוף'); updateLivesHud(); return; }
@@ -425,6 +439,7 @@
     if (ev.type === 'pick') {
       var fx = Packs.effect(ev.effectId), who = g.players[ev.playerId - 1];
       if (ev.effectId === 'life') { lifePicked(who); pushLives(); return; }
+      if (Packs.isItem(ev.effectId)) { itemPicked(who, fx); return; }
       if (who === me && fx) showPackPickup(fx);
     } else if (ev.type === 'end' && +ev.playerId === me.id) {
       clearPackVisual();
@@ -471,6 +486,7 @@
     // אירועי רשת מהמארח (לקוח)
     if (ev.a === 'spawn') packs.clientSpawn(ev.id, ev.x, ev.y, ev.k);
     else if (ev.a === 'pick' && ev.e === 'life') { packs.clientPick(g, ev.id, ev.pid, ev.e); lifePicked(g.players[ev.pid - 1]); }
+    else if (ev.a === 'pick' && Packs.isItem(ev.e)) { var ifx = packs.clientPick(g, ev.id, ev.pid, ev.e); itemPicked(g.players[ev.pid - 1], ifx); }
     else if (ev.a === 'pick') {
       var fx = packs.clientPick(g, ev.id, ev.pid, ev.e);
       if (ev.pid === me.id && fx) showPackPickup(fx);
@@ -478,6 +494,129 @@
       packs.clientEnd(g, ev.pid);
       if (ev.pid === me.id) { clearPackVisual(); var pfx = $('packFx'); if (pfx) pfx.classList.add('hidden'); }
     } else if (ev.a === 'sync') packs.applySync(ev.list || []);
+  }
+
+  /* ---------- v9.21 מצב מלכודת: פריטים ---------- */
+  function itemPicked(who, fx) {
+    if (!who || !fx) return;
+    if (who === me) { feed('קיבלת ' + fx.emoji + ' ' + fx.name + ' · לחצו על הכפתור כדי להטיל'); buzz(25); updateItemBtn(true); }
+  }
+  function bombText(v, killer) {
+    if (killer && killer !== v) return killer === me ? '💣 פוצצת את ' + nm(v) + '! ⚔️' : '💣 ' + nm(killer) + ' פוצץ/ה את ' + nm(v);
+    return v === me ? '💣 עפת מהפצצה של עצמך' : '💣 ' + nm(v) + ' עף/ה מהפצצה של עצמו/ה';
+  }
+  function useItem() {
+    if (state !== 'play' || !g || !me || !me.alive || !me.item) return;   // מותר להטיל גם כשקפואים
+    if (mode === 'client') { if (MPH && MPH.onUse) MPH.onUse(); me.item = null; updateItemBtn(true); return; }   // המארח מחליט ומשדר
+    useItemFor(me.id);
+  }
+  function useItemFor(pid) {
+    if (!itemsOn || mode === 'client' || !g) return null;
+    var p = g.players[pid - 1], it = items.drop(g, p);
+    if (it && p === me) updateItemBtn(true);
+    return it;
+  }
+  function handleItemEvent(ev) {
+    if (ev.type === 'boom') {
+      addBoom(ev.x, ev.y);
+      if (mode === 'host') itemFx.push({ a: 'boom', x: Math.round(ev.x * 100) / 100, y: Math.round(ev.y * 100) / 100, o: ev.ownerId });
+      var o = g.players[ev.ownerId - 1];
+      if (o === me && !ev.victims.length && ev.cells) feed('💣 הפצצה מחקה שטח של יריבים');
+    } else if (ev.type === 'snap') {
+      if (mode === 'host') itemFx.push({ a: 'snap', p: ev.playerId, o: ev.ownerId });
+      snapFeed(g.players[ev.playerId - 1], g.players[ev.ownerId - 1]);
+    } else if (ev.type === 'drop' && ev.playerId === me.id) buzz(15);
+  }
+  function snapFeed(v, o) {
+    if (!v) return;
+    if (v === me) { feed('🪤 נתפסת במלכודת' + (o ? ' של ' + nm(o) : '') + ' – קפוא/ה 2 שניות'); buzz(60); }
+    else if (o === me) feed('🪤 ' + nm(v) + ' נתפס/ה במלכודת שלך!');
+  }
+  function addBoom(x, y) { if (fxLevel() !== 'off') booms.push({ x: x, y: y, t0: performance.now() }); }
+  /* לקוח: מצב הפריטים מהמארח */
+  function onItemsNet(m) {
+    if (!g || mode !== 'client') return;
+    items.applyNet(g, m, performance.now(), TICK_MS);
+    (m.fx || []).forEach(function (f) {
+      if (f.a === 'boom') addBoom(f.x, f.y);
+      else if (f.a === 'snap') snapFeed(g.players[f.p - 1], g.players[f.o - 1]);
+    });
+    updateItemBtn(true);
+  }
+  function isFrozen(p) { return mode === 'client' ? !!(p.frozenMs && performance.now() < p.frozenMs) : Items.frozen(p, g.tickNo); }
+  var itemBtn = $('itemBtn');
+  function updateItemBtn(force) {
+    var k = state === 'play' && g && me && me.alive && itemsOn ? me.item || null : null;
+    if (k === shownItem && !force) return;
+    shownItem = k;
+    if (!itemBtn) return;
+    if (!k) { itemBtn.classList.add('hidden'); return; }
+    var t = Items.type(k);
+    itemBtn.textContent = t.emoji; itemBtn.setAttribute('aria-label', 'הטל ' + t.name);
+    itemBtn.classList.remove('hidden');
+  }
+  if (itemBtn) itemBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); useItem(); });
+  /* ציור: 🪤 (שלי ברור, של אחרים חלש), 💣 עם ספירה ועיגול טווח, פיצוץ – טבעת רכה מתרחבת בלי הבהוב */
+  var EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  function drawItems(over, cw, ch, vx0, vy0, vw, vh) {
+    var lvl = fxLevel(), list = items.list, k, nowMs = performance.now();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (k = 0; k < list.length; k++) {
+      var it = list[k], mine = me && it.o === me.id, pad = Items.BLAST_R + 1;
+      var wx = camX + g.wd(it.x - camX), wy = camY + g.wd(it.y - camY);
+      var xo = images(wx - pad, wx + pad, vx0, vx0 + vw), yo = images(wy - pad, wy + pad, vy0, vy0 + vh);
+      for (var a = 0; a < yo.length; a++) for (var b = 0; b < xo.length; b++) {
+        var sx = (wx + xo[b] - vx0) * unitPx, sy = (wy + yo[a] - vy0) * unitPx;
+        if (it.k === 'trap') {
+          if (over) continue;
+          ctx.globalAlpha = mine ? 1 : 0.28;
+          ctx.strokeStyle = mine ? (lineCss[it.o] || '#4c566a') : 'rgba(76,86,106,.6)'; ctx.lineWidth = Math.max(1.5, unitPx * 0.08);
+          ctx.setLineDash(mine ? [] : [unitPx * 0.25, unitPx * 0.25]);
+          ctx.beginPath(); ctx.arc(sx, sy, Items.TRAP_R * unitPx, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle = '#000'; ctx.font = Math.round(unitPx * 1.35) + 'px ' + EMOJI_FONT; ctx.fillText('🪤', sx, sy);
+          ctx.globalAlpha = 1;
+        } else {
+          var left = Items.left(it, g.tickNo, nowMs, g.DT), R = Items.BLAST_R * unitPx;
+          if (!over) {   // אזור הסכנה מתחת לדמויות: מילוי עדין שמתחזק בהדרגה ככל שהפתיל מתקצר (בלי הבהוב)
+            var f = 1 - Math.min(1, left / (Items.FUSE_TICKS * g.DT));
+            ctx.fillStyle = 'rgba(214,96,77,' + (0.07 + 0.13 * f).toFixed(3) + ')';
+            ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = 'rgba(191,97,106,.7)'; ctx.lineWidth = Math.max(1.5, unitPx * 0.08);
+            ctx.setLineDash([unitPx * 0.4, unitPx * 0.3]); ctx.stroke(); ctx.setLineDash([]);
+            continue;
+          }
+          ctx.fillStyle = '#000'; ctx.font = Math.round(unitPx * 1.5) + 'px ' + EMOJI_FONT; ctx.fillText('💣', sx, sy);
+          var n = Math.max(1, Math.ceil(left));
+          var fp = Math.round(Math.max(14 * DPR, unitPx * 0.95));
+          ctx.font = '800 ' + fp + 'px system-ui,sans-serif';
+          ctx.lineWidth = Math.max(3, fp * 0.22); ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.strokeText(String(n), sx, sy - unitPx * 1.35);
+          ctx.fillStyle = '#bf616a'; ctx.fillText(String(n), sx, sy - unitPx * 1.35);
+        }
+      }
+    }
+    if (!over) return;
+    // פיצוצים: טבעת רכה + הילה כתומה שדועכת (0.7 שנ'; מופחת – טבעת אחת קצרה)
+    var DUR = lvl === 'full' ? 700 : 450;
+    for (k = booms.length - 1; k >= 0; k--) {
+      var bm = booms[k], t = (nowMs - bm.t0) / DUR;
+      if (t >= 1 || t < 0) { booms.splice(k, 1); continue; }
+      var e = 1 - (1 - t) * (1 - t), bx = (camX + g.wd(bm.x - camX) - vx0) * unitPx, by = (camY + g.wd(bm.y - camY) - vy0) * unitPx;
+      var rr = Items.BLAST_R * unitPx * (0.35 + 0.75 * e), al = (1 - t) * 0.55;
+      if (lvl === 'full') {
+        var gr = ctx.createRadialGradient(bx, by, 0, bx, by, rr);
+        gr.addColorStop(0, 'rgba(255,214,140,' + al.toFixed(3) + ')'); gr.addColorStop(0.7, 'rgba(235,150,100,' + (al * 0.6).toFixed(3) + ')'); gr.addColorStop(1, 'rgba(235,150,100,0)');
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(bx, by, rr, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(208,135,112,' + al.toFixed(3) + ')'; ctx.lineWidth = Math.max(2, unitPx * 0.18);
+      ctx.beginPath(); ctx.arc(bx, by, rr, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+  function drawFrozenMark(hx, hy, size) {
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000'; ctx.font = Math.round(size * 0.45) + 'px ' + EMOJI_FONT;
+    ctx.fillText('🪤', hx + size * 0.42, hy + size * 0.38);
+    ctx.restore();
   }
 
   // ---------- ציור ----------
@@ -569,6 +708,7 @@
     var ps = g.players, k, p, maxTurn = g.TURN * g.DT, baseStep = g.SPEED * g.DT;
     for (k = 0; k < ps.length; k++) {
       p = ps[k]; if (!p.alive) continue;
+      if (mode !== 'client' && Items.frozen(p, g.tickNo)) { p.rh = p.h; p.rx = p.x; p.ry = p.y; continue; }   // v9.21 🪤 קפוא/ה
       var step = baseStep * (p.speedMul || 1);
       var mt = p.ice ? maxTurn * Game.ICE_TURN : maxTurn;
       var dh = Game.angDiff(p.target, p.h); if (dh > mt) dh = mt; else if (dh < -mt) dh = -mt;
@@ -659,6 +799,8 @@
             unitPx, now || 0, hole.id, fxLevel() !== 'full');
     }
 
+    if (items.list.length) drawItems(false, cw, ch, vx0, vy0, vw, vh);
+
     // דמויות
     var size = Math.round(unitPx * 1.9);
     var fontPx = Math.round(Math.max(11 * DPR, unitPx * 0.5));
@@ -682,8 +824,10 @@
         ctx.lineWidth = Math.max(2, fontPx * 0.3); ctx.strokeStyle = 'rgba(255,255,255,.85)';
         ctx.strokeText(p.name, hx, hy - size * 0.62);
         ctx.fillStyle = '#3b4252'; ctx.fillText(p.name, hx, hy - size * 0.62);
+        if (isFrozen(p)) drawFrozenMark(hx, hy, size);
       }
     }
+    if (items.list.length || booms.length) drawItems(true, cw, ch, vx0, vy0, vw, vh);   // 💣 וספירה – מעל הדמויות
     // v9: אפקטים – שלב "מעל" (פסילות, טקסט צף, חלקיקים)
     FX.draw(ctx, fxView, now, 'over', Emoji);
     var shade = !!(lv && (lv.id === 'dark' || lv.id === 'radar'));
@@ -795,7 +939,7 @@
     if (mode === 'host' && MPH) MPH.onResume();
   }
   function toMenu() {
-    clearPackVisual(); packs.reset();
+    clearPackVisual(); packs.reset(); items.reset(); itemsOn = false; booms = []; updateItemBtn(true);
     if (mode !== 'solo' && MPH) MPH.leave();
     mode = 'solo'; match = null; $('timer').classList.add('hidden');
     livesStart = 0; livesEnd = null; $('hud').classList.remove('lives');
@@ -806,14 +950,14 @@
   }
   function gameOver(ev) {
     if (livesStart && state !== 'play') return;   // כבר הוכרע (ניצחון) – לא דורסים
-    clearPackVisual(); packs.reset();
+    clearPackVisual(); packs.reset(); items.reset(); if (me) me.item = null; updateItemBtn(true);
     state = 'dying';
     if (S.vib && navigator.vibrate) try { navigator.vibrate(180); } catch (e) {}
     var kills = me.kills, best = me.bestPct;
     if (best > BEST.pct) BEST.pct = best;
     if (kills > BEST.kills) BEST.kills = kills;
     save('kovesh.best', BEST);
-    var reasons = { self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש', enclosed: 'נכלאת בתוך לולאה', pit: 'נפלת לבור מלכודת 🌋' };
+    var reasons = { self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש', enclosed: 'נכלאת בתוך לולאה', pit: 'נפלת לבור מלכודת 🌋', bomb: 'עפת מפצצה 💣' };
     var r = reasons[ev.reason] || '';
     if (ev.killer) r += ' – ' + nm(ev.killer);
     $('overReason').textContent = r;
@@ -866,7 +1010,7 @@
     showBest();
     setTimeout(function () {
       if (state !== 'dying') return;
-      packs.reset();
+      packs.reset(); items.reset(); updateItemBtn(true);
       state = 'over'; stopLoop(); show('over'); $('joyBase').classList.add('hidden');
     }, 1200);
   }
@@ -889,6 +1033,7 @@
     if (e.target && e.target.tagName === 'INPUT') { if (e.key === 'Enter' && state === 'menu') startGame(); return; }
     if (e.code === 'KeyP' || e.key === 'Escape') { if (state === 'play') pause(); else if (state === 'paused') resume(); e.preventDefault(); return; }
     if (e.key === 'Enter' && mode === 'solo' && (state === 'over' || state === 'menu' && !$('menu').classList.contains('hidden'))) { startGame(); return; }
+    if (e.code === 'Space' && state === 'play') { e.preventDefault(); if (!e.repeat) useItem(); return; }   // v9.21: הטלת פריט
     var c = HOLD[e.code] ? e.code : (HOLD[e.key] ? e.key : null);
     if (c && state === 'play') { keysHeld[c] = true; e.preventDefault(); }
   });
@@ -963,10 +1108,11 @@
     setState: function (st) { state = st; }, resize: resize,
     get game() { return g; }, get me() { return me; }, get state() { return state; }, get mode() { return mode; }, get match() { return match; },
     get pits() { return pits; }, get packs() { return packs; }, onPackNet: onPackNet, clearPackVisual: clearPackVisual,
+    get items() { return items; }, get itemsOn() { return itemsOn; }, onItemsNet: onItemsNet, useItemFor: useItemFor, bombText: bombText,
     get livesStart() { return livesStart; }, get livesEnd() { return livesEnd; }, applyLives: applyLives,
     TICK_MS: TICK_MS
   };
   // חשיפה לבדיקות אוטומטיות בלבד
   window.__evBooted = true;
-  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get pits() { return pits; }, get packs() { return packs; }, get livesStart() { return livesStart; }, get livesEnd() { return livesEnd; }, declareRuler: function (p) { declareRuler(p); }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
+  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get pits() { return pits; }, get packs() { return packs; }, get items() { return items; }, get itemsOn() { return itemsOn; }, useItem: function () { useItem(); }, get booms() { return booms; }, get livesStart() { return livesStart; }, get livesEnd() { return livesEnd; }, declareRuler: function (p) { declareRuler(p); }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
 })();

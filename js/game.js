@@ -200,7 +200,7 @@
     // v9.13 מצב חיים: הגנה קצרה אחרי חזרה לחיים (invulnUntil מוגדר רק במצב חיים). עזיבה ואובדן כל השטח – תמיד.
     // v9.14: גם נכלא/ה (הקפה שהושלמה) – תמיד נפסל, גם בזמן ההגנה. ההגנה רק מפני התנגשויות זולות.
     if (p.invulnUntil && this.tickNo < p.invulnUntil && reason !== 'left' && reason !== 'territory' && reason !== 'enclosed') return;
-    p.alive = false; p.deaths++; p.lastTrail = p.trail; p.trail = [];   // v9: השובל האחרון נשמר לאפקט "שבירה"
+    p.alive = false; p.deaths++; p.item = null; p.frozenUntil = 0; p.lastTrail = p.trail; p.trail = [];   // v9: השובל האחרון נשמר לאפקט "שבירה"
     if (this.counts[p.id] > 0) {
       var o = this.owner, n = o.length;
       for (var j = 0; j < n; j++) if (o[j] === p.id) this.setOwner(j, 0);
@@ -400,6 +400,8 @@
       p = ps[k];
       if (!p.alive) continue;
       p.px = p.x; p.py = p.y; p.ph = p.h;
+      // v9.21 🪤 קפוא/ה במלכודת: בלי תנועה ובלי פנייה; השובל נשאר פתוח
+      if (p.frozenUntil && this.tickNo < p.frozenUntil) { p.ux = p.x; p.uy = p.y; p.dead = null; continue; }
       var mt = p.ice ? maxTurn * ICE_TURN : maxTurn;   // v9.19 🧊 קרח: פנייה איטית יותר
       if (p.turnInput) p.target = p.h + p.turnInput * mt * 1.01;
       var d = angDiff(p.target, p.h);
@@ -420,6 +422,11 @@
     // Pits precede other collisions/capture; a dead head cannot close a trail this tick.
     if (this.pitSystem) {
       this.pitSystem.tick(this);
+      for (k = moving.length - 1; k >= 0; k--) if (!moving[k].alive) moving.splice(k, 1);
+    }
+    // v9.21 מצב מלכודת: מלכודות (קפיאה) ופצצות (פיצוץ) – רק בסולו/מארח
+    if (this.itemSystem) {
+      this.itemSystem.tick(this);
       for (k = moving.length - 1; k >= 0; k--) if (!moving[k].alive) moving.splice(k, 1);
     }
     // ראש בראש
