@@ -107,6 +107,90 @@ console.log('v9.19: ארבע ההפתעות החדשות');
   ok(!ic.p.ice, 'החלפת אפקט מבטלת קרח');
 }
 
+console.log('v9.22: משטחים גלויים במצב מהיר');
+{
+  const looks = Packs.LOOKS;
+  ['speed', 'slow', 'invert', 'wide', 'ice', 'ghost', 'dark', 'radar'].forEach(id => {
+    ok(!!looks[id] && looks[id] !== 'gift', id + ' יש משטח (' + looks[id] + ')');
+  });
+  ok(looks.life === 'heart', '❤️ נשאר לב');
+  ok(looks.trap === 'snare' && looks.bomb === 'mine', '🪤/💣 יש משטח (מלכודת/מוקש על הקרקע)');
+  ok(Packs.lookOf({ effectId: 'speed' }) === 'boost', 'lookOf(speed)=boost');
+  ok(Packs.lookOf({ kind: 'life', effectId: 'life' }) === 'heart', 'lookOf(life)=heart');
+  ok(Packs.lookOf({ effectId: '?' }) === 'gift' && Packs.lookOf({ effectId: 'nope' }) === 'gift', 'סוג לא מוכר / סודי → 🎁');
+  ok(Packs.revealForSpeed('fast') && !Packs.revealForSpeed('normal') && !Packs.revealForSpeed(undefined), 'reveal רק במצב מהיר');
+
+  const g = new Game({ size: 80, rand: seeded(1) });
+  const pl = g.addPlayer({}); g.spawn(pl, { x: 10, y: 10 });
+  const packs = new Packs({ rand: seeded(1) }); packs.reset();
+  const hidden = packs.spawnOne(g, { x: 40, y: 40 });
+  const ev0 = packs.events.find(e => e.type === 'spawn');
+  ok(ev0 && !('effectId' in ev0.pack), 'מצב רגיל: אירוע spawn בלי effectId');
+  ok(packs.publicList().every(p => !('effectId' in p)), 'מצב רגיל: publicList בלי effectId');
+
+  packs.reset(); packs.setReveal(true);
+  const shown = packs.spawnOne(g, { x: 40, y: 40 });
+  const ev1 = packs.events.find(e => e.type === 'spawn');
+  ok(ev1 && ev1.pack.effectId === shown.effectId, 'מצב מהיר: spawn כולל effectId');
+  const list = packs.publicList();
+  ok(list.length === 1 && list[0].effectId === shown.effectId, 'מצב מהיר: publicList כולל effectId');
+
+  const guest = new Packs(); guest.reset(); guest.setReveal(true);
+  guest.clientSpawn(7, 20, 21, undefined, 'ice');
+  ok(guest.packs[0].effectId === 'ice' && Packs.lookOf(guest.packs[0]) === 'ice', 'אורח מקבל סוג ב-clientSpawn');
+  guest.applySync([{ id: 8, x: 1, y: 2, effectId: 'radar' }, { id: 9, x: 3, y: 4 }]);
+  ok(guest.packs.find(p => p.id === 8).effectId === 'radar', 'applySync שומר effectId');
+  ok(guest.packs.find(p => p.id === 9).effectId === '?', 'בלי effectId – נשאר סודי ולא מנחש speed');
+
+  function stub() {
+    const calls = [];
+    const rec = (n) => function () { calls.push(n); return this; };
+    const ctx = {
+      calls,
+      texts: [],
+      save: rec('save'), restore: rec('restore'),
+      beginPath: rec('beginPath'), fill: rec('fill'), stroke: rec('stroke'),
+      arc: rec('arc'), ellipse: rec('ellipse'), moveTo: rec('moveTo'),
+      lineTo: rec('lineTo'), closePath: rec('closePath'),
+      fillRect: rec('fillRect'), rotate: rec('rotate'), translate: rec('translate'),
+      scale: rec('scale'), setLineDash: rec('setLineDash'),
+      fillText: function (t) { calls.push('fillText'); ctx.texts.push(t); },
+      createRadialGradient: function () { return { addColorStop: function () {} }; },
+      createLinearGradient: function () { return { addColorStop: function () {} }; },
+    };
+    let _fs, _ss, _ga, _lw, _font, _ta, _tb, _lj, _lc;
+    Object.defineProperties(ctx, {
+      fillStyle: { set(v) { _fs = v; calls.push('fillStyle'); }, get() { return _fs; } },
+      strokeStyle: { set(v) { _ss = v; calls.push('strokeStyle'); }, get() { return _ss; } },
+      globalAlpha: { set(v) { _ga = v; calls.push('alpha'); }, get() { return _ga; } },
+      lineWidth: { set(v) { _lw = v; }, get() { return _lw; } },
+      font: { set(v) { _font = v; }, get() { return _font; } },
+      textAlign: { set(v) { _ta = v; }, get() { return _ta; } },
+      textBaseline: { set(v) { _tb = v; }, get() { return _tb; } },
+      lineJoin: { set(v) { _lj = v; }, get() { return _lj; } },
+      lineCap: { set(v) { _lc = v; }, get() { return _lc; } }
+    });
+    return ctx;
+  }
+  const gift = stub();
+  Packs.draw(gift, 0, 0, 20, 0, { effectId: 'speed' }, { reveal: false });
+  ok(gift.texts.includes('🎁'), 'מצב רגיל: מציירים 🎁 גם להאצה');
+  const heart = stub();
+  Packs.draw(heart, 0, 0, 20, 0, { kind: 'life', effectId: 'life' }, { reveal: false });
+  ok(heart.texts.includes('❤️'), '❤️ גלוי גם במצב רגיל');
+  const boost = stub();
+  Packs.draw(boost, 0, 0, 20, 800, { effectId: 'speed' }, { reveal: true });
+  ok(!boost.texts.includes('🎁') && boost.calls.includes('ellipse') && boost.calls.includes('stroke'), 'מצב מהיר: האצה = מסלול (לא 🎁)');
+  const kinds = ['slow', 'invert', 'wide', 'ice', 'ghost', 'dark', 'radar', 'trap', 'bomb'];
+  let drew = 0;
+  kinds.forEach(id => {
+    const c = stub();
+    Packs.draw(c, 10, 10, 16, 1200, { effectId: id }, { reveal: true, reduced: true });
+    if (c.calls.includes('save') && c.calls.includes('restore') && !c.texts.includes('🎁')) drew++;
+  });
+  ok(drew === kinds.length, 'כל הסוגים האחרים מצוירים כמשטח בלי 🎁 (' + drew + '/' + kinds.length + ')');
+}
+
 console.log('בוט יכול לאסוף');
 {
   const rand = seeded(3);

@@ -176,6 +176,7 @@
     setupMinimap();
     effects = []; FX.clear(); camX = me.x; camY = me.y; layer = null;
     packs.reset(); pits.reset(); g.pitSystem = pits;
+    packs.setReveal(Packs.revealForSpeed(match ? match.speed : S.speed));
     if (livesStart) packs.setLives(livesStart);
     packs.setItems(itemsOn);
     items.reset(); g.itemSystem = itemsOn && mode !== 'client' ? items : null; lastItemsKey = ''; itemFx = []; booms = []; updateItemBtn(true);
@@ -484,7 +485,7 @@
   }
   function onPackNet(ev) {
     // אירועי רשת מהמארח (לקוח)
-    if (ev.a === 'spawn') packs.clientSpawn(ev.id, ev.x, ev.y, ev.k);
+    if (ev.a === 'spawn') packs.clientSpawn(ev.id, ev.x, ev.y, ev.k, ev.e);
     else if (ev.a === 'pick' && ev.e === 'life') { packs.clientPick(g, ev.id, ev.pid, ev.e); lifePicked(g.players[ev.pid - 1]); }
     else if (ev.a === 'pick' && Packs.isItem(ev.e)) { var ifx = packs.clientPick(g, ev.id, ev.pid, ev.e); itemPicked(g.players[ev.pid - 1], ifx); }
     else if (ev.a === 'pick') {
@@ -771,20 +772,17 @@
     ctx.globalAlpha = 1;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // v9.5: חבילות הפתעה – אימוג'י 🎁 עם פעימה זולה (לא במפה הקטנה)
+    // v9.5/v9.22: חבילות – 🎁 במצב רגיל; במצב מהיר משטח לפי סוג (לא במפה הקטנה)
     if (packs.packs.length) {
-      var pulse = 1 + 0.08 * Math.sin((now || 0) / 220);
-      var psz = Math.round(unitPx * 1.55 * pulse);
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.font = psz + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+      var reveal = !!packs.reveal, reducedPacks = fxLevel() !== 'full';
       for (k = 0; k < packs.packs.length; k++) {
         var pk = packs.packs[k];
-        var pwx = camX + g.wd(pk.x - camX), pwy = camY + g.wd(pk.y - camY), ppad = 2;
+        var pwx = camX + g.wd(pk.x - camX), pwy = camY + g.wd(pk.y - camY), ppad = 2.4;
         var pxo = images(pwx - ppad, pwx + ppad, vx0, vx0 + vw), pyo = images(pwy - ppad, pwy + ppad, vy0, vy0 + vh);
         for (var pa = 0; pa < pyo.length; pa++) for (var pb = 0; pb < pxo.length; pb++) {
           var phx = (pwx + pxo[pb] - vx0) * unitPx, phy = (pwy + pyo[pa] - vy0) * unitPx;
           if (phx < -40 || phy < -40 || phx > cw + 40 || phy > ch + 40) continue;
-          ctx.fillText(pk.kind === 'life' ? Packs.HEART_ICON : Packs.ICON, phx, phy);
+          Packs.draw(ctx, phx, phy, unitPx, now || 0, pk, { reveal: reveal, reduced: reducedPacks });
         }
       }
     }
