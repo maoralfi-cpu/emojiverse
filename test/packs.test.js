@@ -180,15 +180,17 @@ console.log('v9.22: משטחים גלויים במצב מהיר');
   ok(heart.texts.includes('❤️'), '❤️ גלוי גם במצב רגיל');
   const boost = stub();
   Packs.draw(boost, 0, 0, 20, 800, { effectId: 'speed' }, { reveal: true });
-  ok(!boost.texts.includes('🎁') && boost.calls.includes('ellipse') && boost.calls.includes('stroke'), 'מצב מהיר: האצה = מסלול (לא 🎁)');
+  ok(!boost.texts.includes('🎁') && boost.texts.includes('⚡') && boost.calls.includes('ellipse'), 'מצב מהיר: האצה = מסלול + ⚡ (לא 🎁)');
   const kinds = ['slow', 'invert', 'wide', 'ice', 'ghost', 'dark', 'radar', 'trap', 'bomb'];
   let drew = 0;
   kinds.forEach(id => {
     const c = stub();
     Packs.draw(c, 10, 10, 16, 1200, { effectId: id }, { reveal: true, reduced: true });
-    if (c.calls.includes('save') && c.calls.includes('restore') && !c.texts.includes('🎁')) drew++;
+    const emo = Packs.effect(id).emoji;
+    if (c.calls.includes('save') && c.texts.includes(emo) && !c.texts.includes('🎁')) drew++;
   });
-  ok(drew === kinds.length, 'כל הסוגים האחרים מצוירים כמשטח בלי 🎁 (' + drew + '/' + kinds.length + ')');
+  ok(drew === kinds.length, 'כל הסוגים: משטח + אימוג׳י ברור במרכז (' + drew + '/' + kinds.length + ')');
+  ok(Packs.emojiOf({ effectId: 'slow' }) === '🐢' && Packs.emojiOf({ kind: 'life', effectId: 'life' }) === '❤️', 'emojiOf מחזיר את אימוג׳י הסוג');
 }
 
 console.log('בוט יכול לאסוף');

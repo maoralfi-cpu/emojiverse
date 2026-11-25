@@ -200,7 +200,7 @@
     // v9.13 מצב חיים: הגנה קצרה אחרי חזרה לחיים (invulnUntil מוגדר רק במצב חיים). עזיבה ואובדן כל השטח – תמיד.
     // v9.14: גם נכלא/ה (הקפה שהושלמה) – תמיד נפסל, גם בזמן ההגנה. ההגנה רק מפני התנגשויות זולות.
     if (p.invulnUntil && this.tickNo < p.invulnUntil && reason !== 'left' && reason !== 'territory' && reason !== 'enclosed') return;
-    p.alive = false; p.deaths++; p.item = null; p.frozenUntil = 0; p.lastTrail = p.trail; p.trail = [];   // v9: השובל האחרון נשמר לאפקט "שבירה"
+    p.alive = false; p.deaths++; p.item = null; p.itemN = 0; p.frozenUntil = 0; p.lastTrail = p.trail; p.trail = [];   // v9: השובל האחרון נשמר לאפקט "שבירה"
     if (this.counts[p.id] > 0) {
       var o = this.owner, n = o.length;
       for (var j = 0; j < n; j++) if (o[j] === p.id) this.setOwner(j, 0);

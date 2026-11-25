@@ -196,6 +196,7 @@
     if (mode !== 'client') {
       var n0 = Math.min(Packs.maxFor(g.W), 2);
       for (var i = 0; i < n0; i++) packs.spawnOne(g);
+      if (itemsOn) packs.seedTrapLoots(g);   // v9.23: מלכודות איסוף בנוסף לקופסאות
       packs.events.length = 0;
       pits.seed(g, packs);
     }
@@ -508,7 +509,12 @@
   }
   function useItem() {
     if (state !== 'play' || !g || !me || !me.alive || !me.item) return;   // מותר להטיל גם כשקפואים
-    if (mode === 'client') { if (MPH && MPH.onUse) MPH.onUse(); me.item = null; updateItemBtn(true); return; }   // המארח מחליט ומשדר
+    if (mode === 'client') {
+      if (MPH && MPH.onUse) MPH.onUse();
+      if (me.item === 'trap' && (me.itemN || 1) > 1) me.itemN--;
+      else { me.item = null; me.itemN = 0; }
+      updateItemBtn(true); return;   // המארח מחליט ומשדר
+    }
     useItemFor(me.id);
   }
   function useItemFor(pid) {
@@ -548,13 +554,21 @@
   var itemBtn = $('itemBtn');
   function updateItemBtn(force) {
     var k = state === 'play' && g && me && me.alive && itemsOn ? me.item || null : null;
-    if (k === shownItem && !force) return;
-    shownItem = k;
+    var n = k === 'trap' ? (me.itemN || 1) : (k ? 1 : 0);
+    var key = k ? k + ':' + n : '';
+    if (key === shownItem && !force) return;
+    shownItem = key;
     if (!itemBtn) return;
-    if (!k) { itemBtn.classList.add('hidden'); return; }
+    var badge = $('itemN'), icon = $('itemIcon');
+    if (!k) { itemBtn.classList.add('hidden'); if (badge) badge.classList.add('hidden'); return; }
     var t = Items.type(k);
-    itemBtn.textContent = t.emoji; itemBtn.setAttribute('aria-label', 'הטל ' + t.name);
+    if (icon) icon.textContent = t.emoji; else itemBtn.textContent = t.emoji;
+    itemBtn.setAttribute('aria-label', 'הטל ' + t.name + (n > 1 ? ' ×' + n : ''));
     itemBtn.classList.remove('hidden');
+    if (badge) {
+      if (k === 'trap' && n > 1) { badge.textContent = String(n); badge.classList.remove('hidden'); }
+      else badge.classList.add('hidden');
+    }
   }
   if (itemBtn) itemBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); useItem(); });
   /* ציור: 🪤 (שלי ברור, של אחרים חלש), 💣 עם ספירה ועיגול טווח, פיצוץ – טבעת רכה מתרחבת בלי הבהוב */
@@ -852,18 +866,18 @@
       r0 = unitPx * 2.2; r1 = unitPx * 9; col = '8,10,20'; alpha = 0.86 * lv.k;
     } else {
       // רדאר: ערפל צפוף, נראות ~7 יח' סביבי; כל 2.5 שנ' פינג שמתרחב לכל המסך וחוזר (0.9 שנ', עקומת סינוס רכה)
+      // v9.23: השוליים בצבע השטח שלי (לא שחור); בלי טבעת תכלת
       var cyc = (lv.el % 2500) / 900, ping = cyc < 1 ? Math.sin(Math.PI * cyc) : 0;
-      r0 = unitPx * 4 + ping * far; r1 = r0 + unitPx * 3; col = '14,30,28'; alpha = 0.95 * lv.k;
+      r0 = unitPx * 4 + ping * far; r1 = r0 + unitPx * 3;
+      var rc = (me && rgb[me.id]) || SLATE;
+      col = rc[0] + ',' + rc[1] + ',' + rc[2];
+      alpha = 0.95 * lv.k;
     }
     if (alpha < 0.01) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     var gr = ctx.createRadialGradient(hx, hy, r0, hx, hy, r1);
     gr.addColorStop(0, 'rgba(' + col + ',0)'); gr.addColorStop(1, 'rgba(' + col + ',' + alpha.toFixed(3) + ')');
     ctx.fillStyle = gr; ctx.fillRect(0, 0, cw, ch);
-    if (lv.id === 'radar' && lv.k > 0.3) {   // טבעת סריקה דקה בגבול הנראות
-      ctx.strokeStyle = 'rgba(120,255,190,' + (0.45 * lv.k).toFixed(3) + ')'; ctx.lineWidth = Math.max(2, unitPx * 0.12);
-      ctx.beginPath(); ctx.arc(hx, hy, r0 + unitPx * 1.5, 0, Math.PI * 2); ctx.stroke();
-    }
   }
   var lastRender = 0, fxView = { camX: 0, camY: 0, vx0: 0, vy0: 0, vw: 0, vh: 0, unitPx: 1, wd: function (d) { return g.wd(d); } };
 
@@ -948,7 +962,7 @@
   }
   function gameOver(ev) {
     if (livesStart && state !== 'play') return;   // כבר הוכרע (ניצחון) – לא דורסים
-    clearPackVisual(); packs.reset(); items.reset(); if (me) me.item = null; updateItemBtn(true);
+    clearPackVisual(); packs.reset(); items.reset(); if (me) { me.item = null; me.itemN = 0; } updateItemBtn(true);
     state = 'dying';
     if (S.vib && navigator.vibrate) try { navigator.vibrate(180); } catch (e) {}
     var kills = me.kills, best = me.bestPct;

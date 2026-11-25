@@ -135,7 +135,7 @@ try:
           const box = document.createElement('div');
           box.id = 'v922legend';
           box.style.cssText = 'position:fixed;bottom:92px;left:8px;right:8px;z-index:99;background:rgba(46,52,64,.9);color:#eceff4;font:11px/1.4 system-ui,sans-serif;padding:8px 10px;border-radius:10px;text-align:right;pointer-events:none';
-          box.textContent = 'v9.22 מצב מהיר: ⚡מסלול  🐢בוץ  🌀מערבולת  🔭מגדלור  ❤️לב  🧊קרח  👻ערפל  🔦פנס  📡רדאר  🪤מלכודת  💣מוקש';
+          box.textContent = 'v9.23 מצב מהיר: ⚡מסלול  🐢בוץ  🌀מערבולת  🔭מגדלור  ❤️לב  🧊קרח  👻ערפל  🔦פנס  📡רדאר  🪤מלכודת  💣מוקש';
           document.body.appendChild(box);
         }""")
         pg.wait_for_timeout(400)

@@ -34,7 +34,48 @@ test('איסוף פריט: נכנס לתא, לא מפעיל אפקט, ומחלי
   pk.packs.push({ id: 1, x: a.x, y: a.y, effectId: 'trap' });
   pk.tick(g); assert.equal(a.item, 'trap'); assert.equal(pk.activeOf(a.id), null);
   assert(pk.events.some(e => e.type === 'pick' && e.effectId === 'trap'));
-  pk.packs.push({ id: 2, x: a.x, y: a.y, effectId: 'bomb' }); pk.tick(g); assert.equal(a.item, 'bomb');
+  pk.packs.push({ id: 2, x: a.x, y: a.y, effectId: 'bomb' }); pk.tick(g); assert.equal(a.item, 'bomb'); assert.equal(a.itemN, 1);
+});
+test('v9.23: איסוף 🪤 נערם, הטלה מורידה אחת, תקרה 9', () => {
+  const { g, a, items } = fixture(); const pk = new Packs(); pk.reset(); pk.setItems(true);
+  pk.packs.push({ id: 1, x: a.x, y: a.y, effectId: 'trap' }); pk.tick(g);
+  assert.equal(a.item, 'trap'); assert.equal(a.itemN || 1, 1);
+  pk.packs.push({ id: 2, x: a.x, y: a.y, effectId: 'trap' }); pk.tick(g);
+  assert.equal(a.item, 'trap'); assert.equal(a.itemN, 2);
+  pk.packs.push({ id: 3, x: a.x, y: a.y, kind: 'traploot', effectId: 'trap' }); pk.tick(g);
+  assert.equal(a.itemN, 3);
+  const d1 = items.drop(g, a);
+  assert(d1 && d1.k === 'trap'); assert.equal(a.item, 'trap'); assert.equal(a.itemN, 2);
+  items.drop(g, a); items.drop(g, a);
+  assert.equal(a.item, null); assert.equal(a.itemN, 0); assert.equal(items.list.length, 3);
+  a.item = 'trap'; a.itemN = 9;
+  pk.packs.length = 0; pk.spawnCD = 1e9; pk.trapLootCD = 1e9;
+  pk.packs.push({ id: 4, x: a.x, y: a.y, effectId: 'trap' }); pk.tick(g);
+  assert.equal(a.itemN, 9); assert.equal(pk.packs.length, 1, 'בתקרה המלכודת נשארת על המפה');
+  assert.equal(pk.packs[0].id, 4);
+});
+test('v9.23: מלכודות איסוף בנוסף לקופסאות, כמספר תקרת ההפתעות, ומופיעות מחדש', () => {
+  const g = new Game({ size: 100, rand: seeded(2) });
+  g.addPlayer({}); g.spawn(g.players[0], { x: 5, y: 5 });
+  const pk = new Packs({ rand: seeded(2) }); pk.reset(); pk.setItems(true);
+  assert.equal(Packs.maxFor(g.W), 2);
+  const n = pk.seedTrapLoots(g);
+  assert.equal(n, 2); assert.equal(pk.trapLootCount(), 2);
+  assert.equal(pk.regularCount(), 0, 'לא נספרות כהפתעות');
+  const box = pk.spawnOne(g, { x: 40, y: 40 });
+  assert(box && pk.regularCount() === 1 && pk.trapLootCount() === 2);
+  const pub = pk.publicList();
+  assert(pub.filter(p => p.kind === 'traploot' && p.effectId === 'trap').length === 2, 'ברשת הסוג גלוי גם במצב רגיל');
+  assert(!('effectId' in pub.find(p => p.id === box.id)), 'קופסה רגילה נשארת הפתעה');
+  const loot = pk.packs.find(p => p.kind === 'traploot');
+  const pl = g.players[0]; pl.x = loot.x; pl.y = loot.y;
+  pk.tick(g);
+  assert.equal(pl.item, 'trap'); assert.equal(pk.trapLootCount(), 1);
+  pk.trapLootCD = 0;
+  for (let i = 0; i < 5 && pk.trapLootCount() < 2; i++) { pk.trapLootCD = 0; pk.tick(g); }
+  assert.equal(pk.trapLootCount(), 2, 'מופיעה מחדש אחרי איסוף');
+  pk.reset();
+  assert.equal(pk.seedTrapLoots(g), 0, 'בלי מצב מלכודת אין מלכודות איסוף');
 });
 test('איסוף פריט לא מבטל אפקט פעיל', () => {
   const { g, a } = fixture(); const pk = new Packs(); pk.reset(); pk.setItems(true);
@@ -101,8 +142,8 @@ test('💣 המטיל עצמו נפסל אם לא ברח – בלי קרדיט �
   assert(d && d.reason === 'bomb' && !d.killer); assert.equal(a.kills, 0);
 });
 test('מוות מנקה פריט ביד וקפיאה', () => {
-  const { g, a } = fixture(); a.item = 'bomb'; a.frozenUntil = 99; g.kill(a, null, 'self');
-  assert.equal(a.item, null); assert.equal(a.frozenUntil, 0);
+  const { g, a } = fixture(); a.item = 'trap'; a.itemN = 4; a.frozenUntil = 99; g.kill(a, null, 'self');
+  assert.equal(a.item, null); assert.equal(a.itemN, 0); assert.equal(a.frozenUntil, 0);
 });
 test('בוט: מטיל פצצה כשיריב קרוב ובורח ממנה', () => {
   const { g, a, b, items } = fixture();
@@ -122,14 +163,17 @@ test('בוט נמנע ממלכודת של אחר (כמו מבור)', () => {
 });
 test('סנכרון רשת: netState → applyNet משחזר פריטים, ידיים וקפיאה', () => {
   const { g, a, b, items } = fixture();
-  a.item = 'bomb'; items.drop(g, a); b.item = 'trap'; b.frozenUntil = g.tickNo + 60;
+  a.item = 'bomb'; items.drop(g, a); b.item = 'trap'; b.itemN = 3; b.frozenUntil = g.tickNo + 60;
   const ns = items.netState(g);
   const g2 = new Game({ size: 100 }); g2.addPlayer({}); g2.addPlayer({});
   const c = new Items(); c.applyNet(g2, JSON.parse(JSON.stringify(ns.msg)), 1000, 1000 / 60);
   assert.equal(c.list.length, 1); assert.equal(c.list[0].k, 'bomb'); assert(Math.abs(c.list[0].atMs - 1000 - 3000) < 20);
-  assert.equal(g2.players[1].item, 'trap'); assert(g2.players[1].frozenMs > 1000);
+  assert.equal(g2.players[1].item, 'trap'); assert.equal(g2.players[1].itemN, 3);
+  assert(g2.players[1].frozenMs > 1000);
   assert.equal(g2.players[0].item, null);
   const k1 = ns.key; g.step(); assert.equal(items.netState(g).key, k1, 'key יציב כשלא השתנה דבר');
+  b.itemN = 4;
+  assert.notEqual(items.netState(g).key, k1, 'שינוי ערימה משנה את key');
 });
 test('השחקן במצב מהיר: הבורות/מלכודות נבדקים במקטע (אין מנהור)', () => {
   const g = new Game({ size: 100, speed: 600, rand: seeded(5) });

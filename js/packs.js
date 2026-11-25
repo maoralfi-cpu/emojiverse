@@ -67,7 +67,15 @@
   Packs.lookOf = function (pack) {
     if (!pack) return 'gift';
     if (pack.kind === 'life' || pack.effectId === 'life') return 'heart';
+    if (pack.kind === 'traploot') return 'snare';
     return Packs.LOOKS[pack.effectId] || 'gift';
+  };
+  Packs.emojiOf = function (pack) {
+    if (!pack) return ICON;
+    if (pack.kind === 'life' || pack.effectId === 'life') return LIFE.emoji;
+    if (pack.kind === 'traploot') return '🪤';
+    var e = Packs.effect(pack.effectId);
+    return (e && e.emoji) || ICON;
   };
   Packs.revealForSpeed = function (s) { return s === 'fast'; };
 
@@ -84,6 +92,7 @@
     this.packs.length = 0;
     this.nextId = 1;
     this.spawnCD = 40;         // הופעה ראשונה אחרי ~0.7 שנ'
+    this.trapLootCD = 0;
     this.active = {};
     this.events.length = 0;
   };
@@ -100,13 +109,36 @@
   P.packPublic = function (pack) {
     var o = { id: pack.id, x: Math.round(pack.x * 100) / 100, y: Math.round(pack.y * 100) / 100 };
     if (pack.kind === 'life') o.kind = 'life';
+    else if (pack.kind === 'traploot') { o.kind = 'traploot'; o.effectId = 'trap'; }
     else if (this.reveal && pack.effectId && pack.effectId !== '?') o.effectId = pack.effectId;
     return o;
   };
   /* המאגר: 8 ההפתעות, ובמצב מלכודת גם 🪤 ו־💣 – כולם באותו סיכוי */
   P.pool = function () { return this.items ? EFFECT_IDS.concat(ITEM_IDS) : EFFECT_IDS; };
-  P.regularCount = function () { var n = 0; for (var i = 0; i < this.packs.length; i++) if (this.packs[i].kind !== 'life') n++; return n; };
-  P.heartCount = function () { return this.packs.length - this.regularCount(); };
+  P.regularCount = function () {
+    var n = 0, i, k;
+    for (i = 0; i < this.packs.length; i++) { k = this.packs[i].kind; if (k !== 'life' && k !== 'traploot') n++; }
+    return n;
+  };
+  P.heartCount = function () { var n = 0, i; for (i = 0; i < this.packs.length; i++) if (this.packs[i].kind === 'life') n++; return n; };
+  P.trapLootCount = function () { var n = 0, i; for (i = 0; i < this.packs.length; i++) if (this.packs[i].kind === 'traploot') n++; return n; };
+  /* v9.23: מלכודות איסוף נוספות על המפה (לא מקופסאות), כמספר תקרת ההפתעות */
+  var TRAPLOOT_EVERY = 150;   // ~2.5 שנ' עד הופעה מחדש אחרי איסוף
+  P.spawnTrapLoot = function (g, forced) {
+    if (!this.items || this.trapLootCount() >= Packs.maxFor(g.W)) return null;
+    var pos = forced || this.findPos(g);
+    if (!pos) return null;
+    var pack = { id: this.nextId++, x: g.wrap(pos.x), y: g.wrap(pos.y), effectId: 'trap', kind: 'traploot' };
+    this.packs.push(pack);
+    this.events.push({ type: 'spawn', pack: this.packPublic(pack) });
+    return pack;
+  };
+  P.seedTrapLoots = function (g) {
+    var n = 0;
+    if (!this.items) return 0;
+    while (this.trapLootCount() < Packs.maxFor(g.W)) { if (!this.spawnTrapLoot(g)) break; n++; }
+    return n;
+  };
   function canGain(p, cap) { return p.alive && !p.gone && (p.lives || 0) > 0 && (p.lives || 0) < cap; }
   P.anyoneBelowCap = function (g) { for (var i = 0; i < g.players.length; i++) if (canGain(g.players[i], this.lifeCap)) return true; return false; };
   P.spawnHeart = function (g, forced) {
@@ -204,9 +236,13 @@
       return LIFE;
     }
     var eid = pack.effectId;
+    // v9.23: 🪤 נערם עד 9; בתקרה האיסוף לא נספר והמלכודת נשארת
+    if (ITEMS[eid] && eid === 'trap' && player.item === 'trap' && (player.itemN || 1) >= 9) return null;
     this.removePack(pack.id);
-    if (ITEMS[eid]) {   // v9.21: פריט נכנס לתא היחיד (מחליף את הקודם), בלי להשפיע על אפקט פעיל
-      player.item = eid;
+    if (ITEMS[eid]) {   // בלי להשפיע על אפקט פעיל. 🪤 נערם; סוג אחר מחליף את התא
+      if (eid === 'trap' && player.item === 'trap') player.itemN = (player.itemN || 1) + 1;
+      else { player.item = eid; player.itemN = 1; }
+      if (pack.kind === 'traploot') this.trapLootCD = Math.max(this.trapLootCD, TRAPLOOT_EVERY);
       this.events.push({ type: 'pick', packId: pack.id, playerId: player.id, effectId: eid });
       return ITEMS[eid];
     }
@@ -254,10 +290,11 @@
         p = g.players[j];
         if (!p.alive) continue;
         if (pack.kind === 'life' && !canGain(p, this.lifeCap)) continue;   // בתקרה – הלב נשאר לאחרים
+        if ((pack.kind === 'traploot' || pack.effectId === 'trap') && p.item === 'trap' && (p.itemN || 1) >= 9) continue;
         d = g.dist2(p.x, p.y, pack.x, pack.y);
         if (d <= bestD) { bestD = d; best = p; }
       }
-      if (best) this.pick(g, pack, best);   // מסיר מהמערך
+      if (best) { if (!this.pick(g, pack, best)) k++; }   // מסיר מהמערך; אם נכשל (תקרה) – נשאר
       else k++;
     }
 
@@ -274,6 +311,14 @@
       else if (this.spawnHeart(g)) this.heartCD = HEART_EVERY;
       else this.heartCD = 30;
     }
+    // v9.23: מלכודות איסוף – בנוסף לקופסאות, עד תקרת ההפתעות, מופיעות מחדש אחרי איסוף
+    if (this.items) {
+      if (this.trapLootCD > 0) this.trapLootCD--;
+      else if (this.trapLootCount() < Packs.maxFor(g.W)) {
+        if (this.spawnTrapLoot(g)) this.trapLootCD = TRAPLOOT_EVERY;
+        else this.trapLootCD = 30;
+      }
+    }
 
     return this.events;
   };
@@ -286,7 +331,9 @@
 
   P.applySync = function (list) {
     this.packs = (list || []).map(function (p) {
-      return p.kind === 'life' ? { id: p.id, x: p.x, y: p.y, effectId: 'life', kind: 'life' } : { id: p.id, x: p.x, y: p.y, effectId: p.effectId || p.e || '?' };
+      return p.kind === 'life' ? { id: p.id, x: p.x, y: p.y, effectId: 'life', kind: 'life' }
+        : p.kind === 'traploot' ? { id: p.id, x: p.x, y: p.y, effectId: 'trap', kind: 'traploot' }
+        : { id: p.id, x: p.x, y: p.y, effectId: p.effectId || p.e || '?' };
     });
     var max = 0;
     for (var i = 0; i < this.packs.length; i++) if (this.packs[i].id > max) max = this.packs[i].id;
@@ -296,7 +343,9 @@
   /* לקוח: הופעה בלי סוג (סוג ייקבע באיסוף ע"י המארח) */
   P.clientSpawn = function (id, x, y, kind, effectId) {
     for (var i = 0; i < this.packs.length; i++) if (this.packs[i].id === id) return;
-    this.packs.push(kind === 'life' ? { id: id, x: x, y: y, effectId: 'life', kind: 'life' } : { id: id, x: x, y: y, effectId: effectId || '?' });
+    this.packs.push(kind === 'life' ? { id: id, x: x, y: y, effectId: 'life', kind: 'life' }
+      : kind === 'traploot' ? { id: id, x: x, y: y, effectId: 'trap', kind: 'traploot' }
+      : { id: id, x: x, y: y, effectId: effectId || '?' });
     if (id >= this.nextId) this.nextId = id + 1;
   };
 
@@ -304,7 +353,13 @@
     this.removePack(packId);
     if (effectId === 'life') return LIFE;   // מספר החיים מגיע מהמארח בהודעת lives
     var p = g && g.players[playerId - 1];
-    if (ITEMS[effectId]) { if (p) p.item = effectId; return ITEMS[effectId]; }
+    if (ITEMS[effectId]) {
+      if (p) {
+        if (effectId === 'trap' && p.item === 'trap') p.itemN = Math.min(9, (p.itemN || 1) + 1);
+        else { p.item = effectId; p.itemN = 1; }
+      }
+      return ITEMS[effectId];
+    }
     if (p) this.apply(g, p, effectId, g.tickNo || 0);
     return EFFECTS[effectId] || null;
   };
@@ -322,148 +377,122 @@
   Packs.draw = function (ctx, x, y, unitPx, now, pack, opts) {
     opts = opts || {};
     var look = Packs.lookOf(pack);
-    if (!opts.reveal && look !== 'heart') look = 'gift';
+    if (!opts.reveal && look !== 'heart' && !(pack && pack.kind === 'traploot')) look = 'gift';
     var t = opts.reduced ? 0 : (now || 0) / 1000;
-    var R = unitPx * 1.55;
+    var R = unitPx * 1.6;
+    var pulse = opts.reduced ? 1 : 1 + 0.07 * Math.sin((now || 0) / 220);
     ctx.save();
     ctx.translate(x, y);
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     if (look === 'gift' || look === 'heart') {
-      var pulse = opts.reduced ? 1 : 1 + 0.08 * Math.sin((now || 0) / 220);
       ctx.font = Math.round(unitPx * 1.55 * pulse) + 'px ' + EMOJI_FONT;
       ctx.fillText(look === 'heart' ? Packs.HEART_ICON : Packs.ICON, 0, 0);
     } else {
-      (DRAW[look] || DRAW.gift)(ctx, R, t);
+      ctx.save();
+      (DRAW[look] || function () {})(ctx, R, t);
+      ctx.restore();
+      // v9.23: האימוג'י של הסוג גדול וברור מעל המשטח
+      ctx.font = Math.round(unitPx * 1.8 * pulse) + 'px ' + EMOJI_FONT;
+      ctx.fillText(Packs.emojiOf(pack), 0, 0);
     }
     ctx.restore();
   };
   var DRAW = {
     boost: function (c, R, t) {
-      var slide = ((t * 0.35) % 1) * R * 0.9;
-      c.rotate(-0.4);
-      oval(c, 0, 0, R * 1.35, R * 0.52);
-      c.fillStyle = 'rgba(230, 175, 55, 0.62)'; c.fill();
-      c.strokeStyle = 'rgba(190, 130, 20, 0.85)'; c.lineWidth = Math.max(1.2, R * 0.07); c.stroke();
-      c.strokeStyle = 'rgba(255, 245, 210, 0.9)'; c.lineWidth = Math.max(1.5, R * 0.1);
-      var i, x;
+      var slide = ((t * 0.4) % 1) * R * 0.9;
+      c.rotate(-0.28);
+      oval(c, 0, 0, R * 1.55, R * 0.24);
+      c.fillStyle = 'rgba(230, 175, 55, 0.4)'; c.fill();
+      c.strokeStyle = 'rgba(190, 130, 20, 0.8)'; c.lineWidth = Math.max(1.2, R * 0.05); c.stroke();
+      c.fillStyle = 'rgba(255, 250, 220, 0.95)';
+      var i, x, s = R * 0.2;
       for (i = -1; i <= 1; i++) {
-        x = i * R * 0.9 - slide;
+        x = i * R * 0.95 - slide;
         c.beginPath();
-        c.moveTo(x - R * 0.22, -R * 0.28);
-        c.lineTo(x + R * 0.18, 0);
-        c.lineTo(x - R * 0.22, R * 0.28);
-        c.stroke();
+        c.moveTo(x - s * 0.95, -s * 1.1);
+        c.lineTo(x + s, 0);
+        c.lineTo(x - s * 0.95, s * 1.1);
+        c.lineTo(x - s * 0.2, 0);
+        c.closePath();
+        c.fill();
       }
     },
     mud: function (c, R, t) {
-      var w = 1 + 0.04 * Math.sin(t * 1.1);
-      oval(c, 0, 0, R * 1.15 * w, R * 0.78);
-      c.fillStyle = 'rgba(96, 68, 32, 0.78)'; c.fill();
-      oval(c, -R * 0.38, R * 0.12, R * 0.62, R * 0.48);
-      c.fillStyle = 'rgba(74, 52, 24, 0.7)'; c.fill();
-      oval(c, R * 0.42, -R * 0.08, R * 0.55, R * 0.4);
-      c.fillStyle = 'rgba(122, 86, 40, 0.55)'; c.fill();
-      oval(c, -R * 0.1, -R * 0.18, R * 0.35, R * 0.2);
-      c.fillStyle = 'rgba(150, 110, 60, 0.28)'; c.fill();
+      var w = 1 + 0.03 * Math.sin(t * 1.1);
+      oval(c, 0, 0, R * 1.15 * w, R * 0.72);
+      c.fillStyle = 'rgba(96, 68, 32, 0.42)'; c.fill();
+      oval(c, R * 0.28, R * 0.08, R * 0.55, R * 0.38);
+      c.fillStyle = 'rgba(74, 52, 24, 0.28)'; c.fill();
     },
     vortex: function (c, R, t) {
       c.rotate(t * 0.7);
-      oval(c, 0, 0, R * 1.05, R * 1.05);
-      c.fillStyle = 'rgba(90, 80, 160, 0.28)'; c.fill();
+      oval(c, 0, 0, R * 1.1, R * 1.1);
+      c.fillStyle = 'rgba(90, 80, 160, 0.2)'; c.fill();
       var i;
       for (i = 0; i < 3; i++) {
-        c.strokeStyle = 'rgba(80, 70, 170, ' + (0.55 - i * 0.12) + ')';
-        c.lineWidth = Math.max(1.4, R * (0.14 - i * 0.02));
+        c.strokeStyle = 'rgba(80, 70, 170, ' + (0.4 - i * 0.08) + ')';
+        c.lineWidth = Math.max(1.3, R * (0.11 - i * 0.02));
         c.beginPath();
-        c.arc(0, 0, R * (0.85 - i * 0.22), i * 0.9, i * 0.9 + 4.2);
+        c.arc(0, 0, R * (0.95 - i * 0.2), i * 0.9, i * 0.9 + 4.2);
         c.stroke();
       }
     },
     beacon: function (c, R, t) {
-      var a = 0.22 + 0.06 * Math.sin(t * 1.2);
-      oval(c, 0, R * 0.15, R * 1.15, R * 0.55);
-      c.fillStyle = 'rgba(40, 48, 64, 0.35)'; c.fill();
+      var a = 0.2 + 0.06 * Math.sin(t * 1.2);
+      oval(c, 0, 0, R * 1.15, R * 0.7);
+      c.fillStyle = 'rgba(40, 48, 64, 0.22)'; c.fill();
       c.save();
       c.rotate(t * 0.55);
       c.fillStyle = 'rgba(255, 220, 120, ' + a + ')';
       c.beginPath();
       c.moveTo(0, 0);
-      c.arc(0, 0, R * 1.25, -0.55, 0.55);
+      c.arc(0, 0, R * 1.2, -0.5, 0.5);
       c.closePath();
       c.fill();
       c.restore();
-      c.fillStyle = 'rgba(70, 78, 92, 0.95)';
-      c.fillRect(-R * 0.16, -R * 0.55, R * 0.32, R * 0.85);
-      oval(c, 0, -R * 0.58, R * 0.22, R * 0.18);
-      c.fillStyle = 'rgba(255, 230, 140, 0.9)'; c.fill();
     },
     ice: function (c, R, t) {
-      var a = 0.28 + 0.07 * Math.sin(t * 1.15);
-      oval(c, 0, 0, R * 1.15, R * 0.82);
-      c.fillStyle = 'rgba(170, 220, 235, 0.72)'; c.fill();
-      c.strokeStyle = 'rgba(230, 250, 255, 0.85)'; c.lineWidth = Math.max(1.2, R * 0.07); c.stroke();
-      oval(c, -R * 0.25, -R * 0.15, R * 0.4, R * 0.22);
+      var a = 0.22 + 0.06 * Math.sin(t * 1.15);
+      oval(c, 0, 0, R * 1.15, R * 0.8);
+      c.fillStyle = 'rgba(170, 220, 235, 0.4)'; c.fill();
+      c.strokeStyle = 'rgba(230, 250, 255, 0.7)'; c.lineWidth = Math.max(1.1, R * 0.06); c.stroke();
+      oval(c, -R * 0.28, -R * 0.18, R * 0.35, R * 0.18);
       c.fillStyle = 'rgba(255, 255, 255, ' + a + ')'; c.fill();
-      c.strokeStyle = 'rgba(120, 180, 200, 0.55)'; c.lineWidth = Math.max(1, R * 0.045);
-      c.beginPath();
-      c.moveTo(-R * 0.55, -R * 0.1); c.lineTo(-R * 0.1, R * 0.25); c.lineTo(R * 0.35, -R * 0.05);
-      c.moveTo(R * 0.05, -R * 0.35); c.lineTo(R * 0.2, R * 0.15);
-      c.stroke();
     },
     mist: function (c, R, t) {
-      var a = 0.5 + 0.08 * Math.sin(t * 0.9);
-      oval(c, 0, 0, R * 1.12, R * 0.82);
+      var a = 0.32 + 0.07 * Math.sin(t * 0.9);
+      oval(c, 0, 0, R * 1.15, R * 0.82);
       c.fillStyle = 'rgba(168, 180, 210, ' + a + ')'; c.fill();
-      c.strokeStyle = 'rgba(120, 132, 170, 0.5)'; c.lineWidth = Math.max(1.1, R * 0.06); c.stroke();
-      oval(c, -R * 0.2, -R * 0.08, R * 0.7, R * 0.48);
-      c.fillStyle = 'rgba(220, 226, 240, ' + (0.35 + 0.08 * Math.sin(t * 0.9 + 1)) + ')'; c.fill();
-      oval(c, R * 0.38, R * 0.1, R * 0.58, R * 0.4);
-      c.fillStyle = 'rgba(200, 208, 230, 0.4)'; c.fill();
+      oval(c, R * 0.3, R * 0.08, R * 0.6, R * 0.42);
+      c.fillStyle = 'rgba(200, 208, 230, 0.28)'; c.fill();
     },
     lantern: function (c, R, t) {
-      var a = 0.2 + 0.06 * Math.sin(t * 0.8);
-      oval(c, 0, 0, R * 1.1, R * 0.85);
-      c.fillStyle = 'rgba(28, 28, 36, 0.55)'; c.fill();
-      oval(c, 0, 0, R * 0.45, R * 0.35);
+      var a = 0.16 + 0.05 * Math.sin(t * 0.8);
+      oval(c, 0, 0, R * 1.15, R * 0.82);
+      c.fillStyle = 'rgba(28, 28, 36, 0.38)'; c.fill();
+      oval(c, 0, 0, R * 0.55, R * 0.4);
       c.fillStyle = 'rgba(255, 190, 90, ' + a + ')'; c.fill();
-      oval(c, 0, 0, R * 0.18, R * 0.14);
-      c.fillStyle = 'rgba(255, 230, 160, 0.55)'; c.fill();
     },
     radar: function (c, R, t) {
       var ph = (t * 0.35) % 1;
-      oval(c, 0, 0, R * 0.95, R * 0.95);
-      c.fillStyle = 'rgba(50, 130, 120, 0.22)'; c.fill();
-      c.strokeStyle = 'rgba(40, 120, 115, 0.55)'; c.lineWidth = Math.max(1.1, R * 0.06);
-      oval(c, 0, 0, R * 0.95, R * 0.95); c.stroke();
-      oval(c, 0, 0, R * 0.55, R * 0.55); c.stroke();
-      c.strokeStyle = 'rgba(40, 120, 115, ' + (0.5 * (1 - ph)) + ')';
-      oval(c, 0, 0, R * (0.25 + ph * 0.85), R * (0.25 + ph * 0.85)); c.stroke();
-      c.save();
-      c.rotate(t * 0.9);
-      c.strokeStyle = 'rgba(70, 170, 150, 0.45)'; c.lineWidth = Math.max(1.2, R * 0.07);
-      c.beginPath(); c.moveTo(0, 0); c.lineTo(R * 0.95, 0); c.stroke();
-      c.restore();
+      oval(c, 0, 0, R * 1.1, R * 1.1);
+      c.fillStyle = 'rgba(50, 130, 120, 0.16)'; c.fill();
+      c.strokeStyle = 'rgba(40, 120, 115, 0.45)'; c.lineWidth = Math.max(1.1, R * 0.055);
+      oval(c, 0, 0, R * 1.1, R * 1.1); c.stroke();
+      oval(c, 0, 0, R * 0.7, R * 0.7); c.stroke();
+      c.strokeStyle = 'rgba(40, 120, 115, ' + (0.4 * (1 - ph)) + ')';
+      oval(c, 0, 0, R * (0.35 + ph * 0.8), R * (0.35 + ph * 0.8)); c.stroke();
     },
     snare: function (c, R) {
-      oval(c, 0, 0, R * 1.05, R * 0.72);
-      c.fillStyle = 'rgba(130, 92, 50, 0.72)'; c.fill();
-      c.strokeStyle = 'rgba(70, 48, 24, 0.85)'; c.lineWidth = Math.max(1.4, R * 0.08); c.stroke();
-      c.beginPath();
-      c.moveTo(-R * 0.7, -R * 0.2); c.lineTo(R * 0.7, R * 0.2);
-      c.moveTo(-R * 0.7, R * 0.2); c.lineTo(R * 0.7, -R * 0.2);
-      c.stroke();
-      oval(c, 0, 0, R * 0.28, R * 0.2);
-      c.fillStyle = 'rgba(60, 40, 20, 0.55)'; c.fill();
+      oval(c, 0, 0, R * 1.12, R * 0.75);
+      c.fillStyle = 'rgba(130, 92, 50, 0.4)'; c.fill();
+      c.strokeStyle = 'rgba(70, 48, 24, 0.7)'; c.lineWidth = Math.max(1.3, R * 0.07); c.stroke();
     },
     mine: function (c, R) {
-      oval(c, 0, 0, R * 0.95, R * 0.7);
-      c.fillStyle = 'rgba(55, 55, 62, 0.82)'; c.fill();
-      c.strokeStyle = 'rgba(160, 90, 70, 0.7)'; c.lineWidth = Math.max(1.3, R * 0.08); c.stroke();
-      oval(c, 0, 0, R * 0.42, R * 0.3);
-      c.fillStyle = 'rgba(80, 80, 88, 0.95)'; c.fill();
-      oval(c, -R * 0.12, -R * 0.1, R * 0.16, R * 0.1);
-      c.fillStyle = 'rgba(200, 200, 210, 0.35)'; c.fill();
+      oval(c, 0, 0, R * 1.05, R * 0.75);
+      c.fillStyle = 'rgba(55, 55, 62, 0.4)'; c.fill();
+      c.strokeStyle = 'rgba(160, 90, 70, 0.6)'; c.lineWidth = Math.max(1.2, R * 0.07); c.stroke();
     }
   };
 

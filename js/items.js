@@ -16,7 +16,10 @@
   Items.FREEZE_TICKS = 2 * 60;  // קפיאה 2 שנ'
   Items.FUSE_TICKS = 3 * 60;    // פתיל 3 שנ'
   Items.BLAST_R = 3.5;          // רדיוס פיצוץ (יחידות עולם)
+  Items.STACK_MAX = 9;          // v9.23: תקרת ערימת 🪤
   Items.isItem = function (id) { return id === 'trap' || id === 'bomb'; };
+  Items.count = function (p) { return p && Items.isItem(p.item) ? Math.max(1, Math.min(Items.STACK_MAX, p.itemN || 1)) : 0; };
+  Items.clear = function (p) { if (p) { p.item = null; p.itemN = 0; } };
   Items.type = function (id) { return TYPES[id] || null; };
   Items.norm = function (v) { return v === 'on' || v === true ? 'on' : 'off'; };
   Items.frozen = function (p, tickNo) { return !!(p && p.frozenUntil && tickNo < p.frozenUntil); };
@@ -28,7 +31,8 @@
   P.drop = function (g, p) {
     if (!g || !p || !p.alive || !Items.isItem(p.item)) return null;
     var k = p.item, it = { id: this.nextId++, k: k, x: g.wrap(p.x), y: g.wrap(p.y), o: p.id, until: g.tickNo + (k === 'trap' ? Items.TRAP_TICKS : Items.FUSE_TICKS) };
-    p.item = null;
+    if (k === 'trap' && (p.itemN || 1) > 1) p.itemN--;
+    else { p.item = null; p.itemN = 0; }
     this.list.push(it);
     this.events.push({ type: 'drop', item: it, playerId: p.id });
     return it;
@@ -47,7 +51,7 @@
   /* צעד מארח/סולו – נקרא מתוך Game.step אחרי התנועה והבורות, לפני שאר ההתנגשויות */
   P.tick = function (g) {
     var ps = g.players, i, k, p, it, r2 = Items.TRAP_R * Items.TRAP_R;
-    for (k = 0; k < ps.length; k++) { p = ps[k]; if (!p.alive) { p.item = null; p.frozenUntil = 0; } }
+    for (k = 0; k < ps.length; k++) { p = ps[k]; if (!p.alive) { p.item = null; p.itemN = 0; p.frozenUntil = 0; } }
     for (i = 0; i < this.list.length; ) {
       it = this.list[i];
       if (it.k === 'trap') {
@@ -126,11 +130,11 @@
     var held = [], frz = [], t = g.tickNo;
     for (var k = 0; k < g.players.length; k++) {
       var p = g.players[k];
-      held.push(p.item === 'trap' ? 1 : p.item === 'bomb' ? 2 : 0);
+      held.push(p.item === 'trap' ? Items.count(p) : p.item === 'bomb' ? 10 : 0);
       frz.push(Items.frozen(p, t) ? p.frozenUntil - t : 0);
     }
     var list = this.list.map(function (it) { return { id: it.id, k: it.k === 'bomb' ? 2 : 1, x: Math.round(it.x * 100) / 100, y: Math.round(it.y * 100) / 100, o: it.o, l: Math.max(0, it.until - t) }; });
-    var key = list.map(function (it) { return it.id; }).join(',') + '|' + held.join('') + '|' + frz.map(function (f) { return f ? 1 : 0; }).join('');
+    var key = list.map(function (it) { return it.id; }).join(',') + '|' + held.join(',') + '|' + frz.map(function (f) { return f ? 1 : 0; }).join('');
     return { key: key, msg: { t: 'items', list: list, held: held, frz: frz } };
   };
   /* לקוח: מחיל מצב מהמארח. זמנים לפי השעון המקומי (ms) */
@@ -142,7 +146,9 @@
     });
     for (var k = 0; k < g.players.length; k++) {
       var p = g.players[k], h = (m.held || [])[k], f = (m.frz || [])[k];
-      p.item = h === 1 ? 'trap' : h === 2 ? 'bomb' : null;
+      if (h >= 1 && h <= 9) { p.item = 'trap'; p.itemN = h; }
+      else if (h === 10) { p.item = 'bomb'; p.itemN = 1; }
+      else { p.item = null; p.itemN = 0; }
       p.frozenMs = f ? nowMs + f * tickMs : 0;
     }
   };
