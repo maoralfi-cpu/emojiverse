@@ -512,19 +512,25 @@
     if (killer && killer !== v) return killer === me ? '🪤 ' + nm(v) + ' עלה/תה על המלכודת שלך! ⚔️' : '🪤 ' + nm(v) + ' עלה/תה על מלכודת של ' + nm(killer);
     return v === me ? '🪤 עלית על המלכודת של עצמך' : '🪤 ' + nm(v) + ' עלה/תה על המלכודת של עצמו/ה';
   }
-  function useItem() {
-    if (state !== 'play' || !g || !me || !me.alive || !me.item) return;   // מותר להטיל גם כשקפואים
+  function useItem(kind) {
+    if (state !== 'play' || !g || !me || !me.alive) return;   // מותר להטיל גם כשקפואים
+    Items.adopt(me);
+    var k = kind === 'bomb' || kind === 'trap' ? kind : (me.traps ? 'trap' : me.bomb ? 'bomb' : null);
+    if (k === 'trap' && !me.traps) return;
+    if (k === 'bomb' && !me.bomb) return;
+    if (!k) return;
     if (mode === 'client') {
-      if (MPH && MPH.onUse) MPH.onUse();
-      if (me.item === 'trap' && (me.itemN || 1) > 1) me.itemN--;
-      else { me.item = null; me.itemN = 0; }
+      if (MPH && MPH.onUse) MPH.onUse(k);
+      if (k === 'trap') me.traps--;
+      else me.bomb = 0;
+      Items.sync(me);
       updateItemBtn(true); return;   // המארח מחליט ומשדר
     }
-    useItemFor(me.id);
+    useItemFor(me.id, k);
   }
-  function useItemFor(pid) {
+  function useItemFor(pid, kind) {
     if (!itemsOn || mode === 'client' || !g) return null;
-    var p = g.players[pid - 1], it = items.drop(g, p);
+    var p = g.players[pid - 1], it = items.drop(g, p, kind);
     if (it && p === me) updateItemBtn(true);
     return it;
   }
@@ -548,26 +554,31 @@
     updateItemBtn(true);
   }
   function isFrozen(p) { return mode === 'client' ? !!(p.frozenMs && performance.now() < p.frozenMs) : Items.frozen(p, g.tickNo); }
-  var itemBtn = $('itemBtn');
+  var itemBtn = $('itemBtn'), bombBtn = $('bombBtn');
   function updateItemBtn(force) {
-    var k = state === 'play' && g && me && me.alive && itemsOn ? me.item || null : null;
-    var n = k === 'trap' ? (me.itemN || 1) : (k ? 1 : 0);
-    var key = k ? k + ':' + n : '';
+    var play = state === 'play' && g && me && me.alive && itemsOn;
+    if (play) Items.adopt(me);
+    var n = play ? Items.traps(me) : 0, hasB = play && Items.hasBomb(me);
+    var key = (n ? 't' + n : '') + (hasB ? 'b' : '');
     if (key === shownItem && !force) return;
     shownItem = key;
-    if (!itemBtn) return;
     var badge = $('itemN'), icon = $('itemIcon');
-    if (!k) { itemBtn.classList.add('hidden'); if (badge) badge.classList.add('hidden'); return; }
-    var t = Items.type(k);
-    if (icon) icon.textContent = t.emoji; else itemBtn.textContent = t.emoji;
-    itemBtn.setAttribute('aria-label', 'הטל ' + t.name + (n > 1 ? ' ×' + n : ''));
-    itemBtn.classList.remove('hidden');
-    if (badge) {
-      if (k === 'trap' && n > 1) { badge.textContent = String(n); badge.classList.remove('hidden'); }
-      else badge.classList.add('hidden');
+    if (itemBtn) {
+      if (!n) { itemBtn.classList.add('hidden'); if (badge) badge.classList.add('hidden'); }
+      else {
+        if (icon) icon.textContent = '🪤';
+        itemBtn.setAttribute('aria-label', 'הטל מלכודת' + (n > 1 ? ' ×' + n : ''));
+        itemBtn.classList.remove('hidden');
+        if (badge) {
+          if (n > 1) { badge.textContent = String(n); badge.classList.remove('hidden'); }
+          else badge.classList.add('hidden');
+        }
+      }
     }
+    if (bombBtn) bombBtn.classList.toggle('hidden', !hasB);
   }
-  if (itemBtn) itemBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); useItem(); });
+  if (itemBtn) itemBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); useItem('trap'); });
+  if (bombBtn) bombBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); useItem('bomb'); });
   /* ציור: מלכודת שהונחה (⚠️ + טבעת אדומה רכה), 💣 עם ספירה ועיגול טווח, פיצוץ – טבעת רכה מתרחבת בלי הבהוב */
   var EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
   function drawItems(over, cw, ch, vx0, vy0, vw, vh) {
@@ -966,7 +977,7 @@
   }
   function gameOver(ev) {
     if (livesStart && state !== 'play') return;   // כבר הוכרע (ניצחון) – לא דורסים
-    clearPackVisual(); packs.reset(); items.reset(); if (me) { me.item = null; me.itemN = 0; } updateItemBtn(true);
+    clearPackVisual(); packs.reset(); items.reset(); if (me) Items.clear(me); updateItemBtn(true);
     state = 'dying';
     if (S.vib && navigator.vibrate) try { navigator.vibrate(180); } catch (e) {}
     var kills = me.kills, best = me.bestPct;
@@ -1049,7 +1060,8 @@
     if (e.target && e.target.tagName === 'INPUT') { if (e.key === 'Enter' && state === 'menu') startGame(); return; }
     if (e.code === 'KeyP' || e.key === 'Escape') { if (state === 'play') pause(); else if (state === 'paused') resume(); e.preventDefault(); return; }
     if (e.key === 'Enter' && mode === 'solo' && (state === 'over' || state === 'menu' && !$('menu').classList.contains('hidden'))) { startGame(); return; }
-    if (e.code === 'Space' && state === 'play') { e.preventDefault(); if (!e.repeat) useItem(); return; }   // v9.21: הטלת פריט
+    if (e.code === 'Space' && state === 'play') { e.preventDefault(); if (!e.repeat) useItem(); return; }   // v9.28: מלכודת אם יש, אחרת פצצה
+    if ((e.code === 'KeyB' || e.key === 'b' || e.key === 'B') && state === 'play') { e.preventDefault(); if (!e.repeat) useItem('bomb'); return; }   // v9.28: פצצה
     var c = HOLD[e.code] ? e.code : (HOLD[e.key] ? e.key : null);
     if (c && state === 'play') { keysHeld[c] = true; e.preventDefault(); }
   });
@@ -1130,5 +1142,5 @@
   };
   // חשיפה לבדיקות אוטומטיות בלבד
   window.__evBooted = true;
-  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get pits() { return pits; }, get packs() { return packs; }, get items() { return items; }, get itemsOn() { return itemsOn; }, useItem: function () { useItem(); }, get booms() { return booms; }, get livesStart() { return livesStart; }, get livesEnd() { return livesEnd; }, declareRuler: function (p) { declareRuler(p); }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
+  window.__kovesh = { get frames() { return frames; }, get game() { return g; }, get me() { return me; }, get state() { return state; }, get cam() { return [camX, camY]; }, get fx() { return FX; }, get pits() { return pits; }, get packs() { return packs; }, get items() { return items; }, get itemsOn() { return itemsOn; }, useItem: function (k) { useItem(k); }, get booms() { return booms; }, get livesStart() { return livesStart; }, get livesEnd() { return livesEnd; }, declareRuler: function (p) { declareRuler(p); }, fxDeath: function (v, k, r, b) { fxDeath(v, k, r, b); }, fxCapture: function (p, c, t, vi, b) { return fxCapture(p, c, t, vi, b); }, start: startGame, pause: pause };
 })();

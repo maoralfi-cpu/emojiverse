@@ -288,7 +288,7 @@
         if (inGame) joinMidGame(h); else pushLobby();
       } else if (!h) return;
       else if (m.t === 'name') { h.name = Net.cleanName(m.name) || h.name; if (!inGame) pushLobby(); }
-      else if (m.t === 'use') { if (inGame && h.pid && Core.mode === 'host') Core.useItemFor(h.pid); }   // v9.21: אורח מטיל פריט – המארח מחליט
+      else if (m.t === 'use') { if (inGame && h.pid && Core.mode === 'host') Core.useItemFor(h.pid, m.k); }   // v9.21/v9.28: אורח מטיל; k=trap/bomb, בלי k – ברירת מחדל
       else if (m.t === 'pick') { if (!inGame && typeof m.emoji === 'string' && emojiFree(m.emoji, h)) h.emoji = m.emoji; pushLobby(); }
     });
     c.on('close', function () { if (h) dropHuman(h); });
@@ -362,7 +362,7 @@
     },
     // v9.13: מספרי החיים – הודעה אמינה נפרדת (תמונת המצב הבינארית לא השתנתה)
     onItems: function (m) { broadcast(m); },
-    onUse: function () { send(conn, { t: 'use' }); },
+    onUse: function (k) { send(conn, k ? { t: 'use', k: k } : { t: 'use' }); },
     onLives: function () {
       var g = Core.game; if (!g || !Core.livesStart) return;
       broadcast({ t: 'lives', n: Core.livesStart, l: g.players.map(function (p) { return p.lives || 0; }) });

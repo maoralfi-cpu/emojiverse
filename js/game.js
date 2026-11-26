@@ -104,7 +104,7 @@
     var p = {
       id: id, name: info.name || ('P' + id), isBot: !!info.isBot, avatar: info.avatar || 0, emoji: info.emoji || '🙂', color: info.color || '#888', key: info.key || '',
       x: 0, y: 0, px: 0, py: 0, h: 0, ph: 0, target: 0, turnInput: 0,
-      trail: [], tb: [0, 0, 0, 0], alive: false, kills: 0, bestPct: 0, respawnAt: 0, ai: null, deaths: 0, homeX: 0, homeY: 0, speedMul: 1
+      trail: [], tb: [0, 0, 0, 0], alive: false, kills: 0, bestPct: 0, respawnAt: 0, ai: null, deaths: 0, homeX: 0, homeY: 0, speedMul: 1, traps: 0, bomb: 0, item: null, itemN: 0
     };
     this.players.push(p);
     return p;
@@ -200,7 +200,7 @@
     // v9.13 מצב חיים: הגנה קצרה אחרי חזרה לחיים (invulnUntil מוגדר רק במצב חיים). עזיבה ואובדן כל השטח – תמיד.
     // v9.14: גם נכלא/ה (הקפה שהושלמה) – תמיד נפסל, גם בזמן ההגנה. ההגנה רק מפני התנגשויות זולות.
     if (p.invulnUntil && this.tickNo < p.invulnUntil && reason !== 'left' && reason !== 'territory' && reason !== 'enclosed') return;
-    p.alive = false; p.deaths++; p.item = null; p.itemN = 0; p.frozenUntil = 0; p.lastTrail = p.trail; p.trail = [];   // v9: השובל האחרון נשמר לאפקט "שבירה"
+    p.alive = false; p.deaths++; p.item = null; p.itemN = 0; p.traps = 0; p.bomb = 0; p.frozenUntil = 0; p.lastTrail = p.trail; p.trail = [];   // v9: השובל האחרון נשמר לאפקט "שבירה"
     if (this.counts[p.id] > 0) {
       var o = this.owner, n = o.length;
       for (var j = 0; j < n; j++) if (o[j] === p.id) this.setOwner(j, 0);

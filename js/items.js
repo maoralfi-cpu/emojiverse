@@ -1,5 +1,5 @@
 /* Emojiverse v9.21 – מצב מלכודת (סעיף 23): 🪤 מלכודת ו־💣 פצצה.
-   קופסת הפתעה יכולה להכיל פריט (רק כשהמצב פעיל). הפריט נשמר בתא אחד (p.item) ומוטל בכפתור/רווח.
+   קופסת הפתעה יכולה להכיל פריט (רק כשהמצב פעיל). v9.28: שני תאים נפרדים – p.traps (0–9) ו-p.bomb (0/1) – ושני כפתורים.
    סימולציה רק בסולו/מארח (Game.step קורא ל-tick); הלקוח מקבל מצב מלא בהודעת items ומצייר. */
 (function (root) {
   'use strict';
@@ -22,8 +22,45 @@
   Items.BLAST_R = 3.5 * 2.5;    // v9.26: פי 2.5 (8.75 יח׳ = 17.5 תאים, CELL=0.5)
   Items.STACK_MAX = 9;          // v9.23: תקרת ערימת 🪤
   Items.isItem = function (id) { return id === 'trap' || id === 'bomb'; };
-  Items.count = function (p) { return p && Items.isItem(p.item) ? Math.max(1, Math.min(Items.STACK_MAX, p.itemN || 1)) : 0; };
-  Items.clear = function (p) { if (p) { p.item = null; p.itemN = 0; } };
+  /* v9.28: מלכודות ופצצה נשמרות יחד. adopt קורא גם כתיבה ישנה ל-item/itemN. */
+  Items.adopt = function (p) {
+    if (!p) return p;
+    if (p.traps == null) p.traps = 0;
+    if (!p.bomb) p.bomb = 0;
+    if (!p.traps && !p.bomb) {
+      if (p.item === 'trap') p.traps = Math.max(1, Math.min(Items.STACK_MAX, p.itemN || 1));
+      else if (p.item === 'bomb') p.bomb = 1;
+    } else if (!p.traps && p.item === 'trap' && (p.itemN || 0) > 0) {
+      p.traps = Math.min(Items.STACK_MAX, p.itemN);
+    } else if (!p.bomb && p.item === 'bomb') p.bomb = 1;
+    return p;
+  };
+  Items.sync = function (p) {
+    if (!p) return p;
+    p.traps = Math.max(0, Math.min(Items.STACK_MAX, p.traps | 0));
+    p.bomb = p.bomb ? 1 : 0;
+    if (p.traps > 0) { p.item = 'trap'; p.itemN = p.traps; }
+    else if (p.bomb) { p.item = 'bomb'; p.itemN = 1; }
+    else { p.item = null; p.itemN = 0; }
+    return p;
+  };
+  Items.traps = function (p) { return p ? Items.sync(p).traps : 0; };
+  Items.hasBomb = function (p) { return !!(p && Items.sync(p).bomb); };
+  Items.count = function (p) { return Items.traps(p); };
+  Items.give = function (p, kind) {
+    if (!p) return false;
+    Items.adopt(p);
+    if (kind === 'trap') {
+      if (p.traps >= Items.STACK_MAX) return false;
+      p.traps++; Items.sync(p); return true;
+    }
+    if (kind === 'bomb') {
+      if (p.bomb) return false;
+      p.bomb = 1; Items.sync(p); return true;
+    }
+    return false;
+  };
+  Items.clear = function (p) { if (p) { p.traps = 0; p.bomb = 0; p.item = null; p.itemN = 0; } };
   Items.type = function (id) { return TYPES[id] || null; };
   Items.norm = function (v) { return v === 'on' || v === true ? 'on' : 'off'; };
   Items.frozen = function (p, tickNo) { return !!(p && p.frozenUntil && tickNo < p.frozenUntil); };
@@ -32,12 +69,18 @@
   P.reset = function () { this.list.length = 0; this.nextId = 1; this.events.length = 0; this.booms.length = 0; };
 
   /* הטלה: במיקום הנוכחי של הראש. מחזיר את הפריט או null */
-  P.drop = function (g, p) {
-    if (!g || !p || !p.alive || !Items.isItem(p.item)) return null;
-    var k = p.item, it = { id: this.nextId++, k: k, x: g.wrap(p.x), y: g.wrap(p.y), o: p.id, until: g.tickNo + (k === 'trap' ? Items.TRAP_TICKS : Items.FUSE_TICKS) };
+  P.drop = function (g, p, kind) {
+    if (!g || !p || !p.alive) return null;
+    Items.adopt(p);
+    var k = kind === 'bomb' || kind === 'trap' ? kind : (p.traps ? 'trap' : p.bomb ? 'bomb' : null);
+    if (k === 'trap' && !p.traps) return null;
+    if (k === 'bomb' && !p.bomb) return null;
+    if (!k) return null;
+    var it = { id: this.nextId++, k: k, x: g.wrap(p.x), y: g.wrap(p.y), o: p.id, until: g.tickNo + (k === 'trap' ? Items.TRAP_TICKS : Items.FUSE_TICKS) };
     if (k === 'trap') it.arm = g.tickNo + Items.GRACE_TICKS;
-    if (k === 'trap' && (p.itemN || 1) > 1) p.itemN--;
-    else { p.item = null; p.itemN = 0; }
+    if (k === 'trap') p.traps--;
+    else p.bomb = 0;
+    Items.sync(p);
     this.list.push(it);
     this.events.push({ type: 'drop', item: it, playerId: p.id });
     return it;
@@ -56,7 +99,7 @@
   /* צעד מארח/סולו – נקרא מתוך Game.step אחרי התנועה והבורות, לפני שאר ההתנגשויות */
   P.tick = function (g) {
     var ps = g.players, i, k, p, it, r2 = Items.TRAP_R * Items.TRAP_R;
-    for (k = 0; k < ps.length; k++) { p = ps[k]; if (!p.alive) { p.item = null; p.itemN = 0; p.frozenUntil = 0; } }
+    for (k = 0; k < ps.length; k++) { p = ps[k]; if (!p.alive) { Items.clear(p); p.frozenUntil = 0; } }
     for (i = 0; i < this.list.length; ) {
       it = this.list[i];
       if (it.k === 'trap') {
@@ -144,15 +187,17 @@
 
   /* סנכרון מארח→לקוח: מצב מלא (רשימה, פריט ביד, קפואים). key – כדי לשלוח רק כשמשהו השתנה */
   P.netState = function (g) {
-    var held = [], frz = [], t = g.tickNo;
+    var held = [], bombs = [], frz = [], t = g.tickNo;
     for (var k = 0; k < g.players.length; k++) {
       var p = g.players[k];
-      held.push(p.item === 'trap' ? Items.count(p) : p.item === 'bomb' ? 10 : 0);
+      Items.adopt(p);
+      held.push(Items.traps(p));
+      bombs.push(Items.hasBomb(p) ? 1 : 0);
       frz.push(Items.frozen(p, t) ? p.frozenUntil - t : 0);
     }
     var list = this.list.map(function (it) { return { id: it.id, k: it.k === 'bomb' ? 2 : 1, x: Math.round(it.x * 100) / 100, y: Math.round(it.y * 100) / 100, o: it.o, l: Math.max(0, it.until - t) }; });
-    var key = list.map(function (it) { return it.id; }).join(',') + '|' + held.join(',') + '|' + frz.map(function (f) { return f ? 1 : 0; }).join('');
-    return { key: key, msg: { t: 'items', list: list, held: held, frz: frz } };
+    var key = list.map(function (it) { return it.id; }).join(',') + '|' + held.join(',') + '|' + bombs.join(',') + '|' + frz.map(function (f) { return f ? 1 : 0; }).join('');
+    return { key: key, msg: { t: 'items', list: list, held: held, bombs: bombs, frz: frz } };
   };
   /* לקוח: מחיל מצב מהמארח. זמנים לפי השעון המקומי (ms) */
   P.applyNet = function (g, m, nowMs, tickMs) {
@@ -161,11 +206,16 @@
     this.list = (m.list || []).filter(function (it) { return it && isFinite(it.x) && isFinite(it.y); }).map(function (it) {
       return { id: it.id, k: it.k === 2 ? 'bomb' : 'trap', x: g.wrap(it.x), y: g.wrap(it.y), o: it.o, atMs: nowMs + (it.l || 0) * tickMs };
     });
+    var hasBombs = !!m.bombs;
     for (var k = 0; k < g.players.length; k++) {
-      var p = g.players[k], h = (m.held || [])[k], f = (m.frz || [])[k];
-      if (h >= 1 && h <= 9) { p.item = 'trap'; p.itemN = h; }
-      else if (h === 10) { p.item = 'bomb'; p.itemN = 1; }
-      else { p.item = null; p.itemN = 0; }
+      var p = g.players[k], h = (m.held || [])[k] || 0, f = (m.frz || [])[k];
+      if (hasBombs) {
+        p.traps = (h >= 1 && h <= 9) ? h : 0;
+        p.bomb = m.bombs[k] ? 1 : 0;
+      } else if (h === 10) { p.traps = 0; p.bomb = 1; }   // מארח ישן: 10 = פצצה בלבד
+      else if (h >= 1 && h <= 9) { p.traps = h; p.bomb = 0; }
+      else { p.traps = 0; p.bomb = 0; }
+      Items.sync(p);
       p.frozenMs = f ? nowMs + f * tickMs : 0;
     }
   };

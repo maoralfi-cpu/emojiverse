@@ -29,12 +29,15 @@ test('במצב מלכודת: 10 סוגים בסיכוי שווה, כולל 🪤 
   assert.equal(Object.keys(cnt).length, 10);
   for (const k in cnt) assert(Math.abs(cnt[k] - 2000) < 300, k + ' ' + cnt[k]);
 });
-test('איסוף פריט: נכנס לתא, לא מפעיל אפקט, ומחליף פריט קודם', () => {
+test('איסוף פריט: נכנס לתא, לא מפעיל אפקט; 💣 לא מוחקת 🪤', () => {
   const { g, a } = fixture(); const pk = new Packs(); pk.reset(); pk.setItems(true);
+  pk.spawnCD = 1e9; pk.trapLootCD = 1e9; pk.bombLootCD = 1e9;
   pk.packs.push({ id: 1, x: a.x, y: a.y, effectId: 'trap' });
-  pk.tick(g); assert.equal(a.item, 'trap'); assert.equal(pk.activeOf(a.id), null);
+  pk.tick(g); assert.equal(a.item, 'trap'); assert.equal(Items.traps(a), 1); assert.equal(pk.activeOf(a.id), null);
   assert(pk.events.some(e => e.type === 'pick' && e.effectId === 'trap'));
-  pk.packs.push({ id: 2, x: a.x, y: a.y, effectId: 'bomb' }); pk.tick(g); assert.equal(a.item, 'bomb'); assert.equal(a.itemN, 1);
+  pk.packs.push({ id: 2, x: a.x, y: a.y, effectId: 'bomb' }); pk.tick(g);
+  assert.equal(Items.traps(a), 1); assert.equal(Items.hasBomb(a) ? 1 : 0, 1);
+  assert.equal(a.item, 'trap'); assert.equal(a.itemN, 1);   // תצוגת תאימות: מלכודות קודמות לפצצה
 });
 test('v9.23: איסוף 🪤 נערם, הטלה מורידה אחת, תקרה 9', () => {
   const { g, a, items } = fixture(); const pk = new Packs(); pk.reset(); pk.setItems(true);
@@ -155,8 +158,8 @@ test('💣 המטיל עצמו נפסל אם לא ברח – בלי קרדיט �
   assert(d && d.reason === 'bomb' && !d.killer); assert.equal(a.kills, 0);
 });
 test('מוות מנקה פריט ביד וקפיאה', () => {
-  const { g, a } = fixture(); a.item = 'trap'; a.itemN = 4; a.frozenUntil = 99; g.kill(a, null, 'self');
-  assert.equal(a.item, null); assert.equal(a.itemN, 0); assert.equal(a.frozenUntil, 0);
+  const { g, a } = fixture(); a.item = 'trap'; a.itemN = 4; a.traps = 4; a.bomb = 1; a.frozenUntil = 99; g.kill(a, null, 'self');
+  assert.equal(a.item, null); assert.equal(a.itemN, 0); assert.equal(a.traps, 0); assert.equal(a.bomb, 0); assert.equal(a.frozenUntil, 0);
 });
 test('בוט: מטיל פצצה כשיריב קרוב ובורח ממנה', () => {
   const { g, a, b, items } = fixture();
@@ -179,14 +182,17 @@ test('סנכרון רשת: netState → applyNet משחזר פריטים, ידי
   const { g, a, b, items } = fixture();
   a.item = 'bomb'; items.drop(g, a); b.item = 'trap'; b.itemN = 3; b.frozenUntil = g.tickNo + 60;
   const ns = items.netState(g);
+  assert.deepEqual(ns.msg.held, [0, 3]);
+  assert.deepEqual(ns.msg.bombs, [0, 0]);
   const g2 = new Game({ size: 100 }); g2.addPlayer({}); g2.addPlayer({});
   const c = new Items(); c.applyNet(g2, JSON.parse(JSON.stringify(ns.msg)), 1000, 1000 / 60);
   assert.equal(c.list.length, 1); assert.equal(c.list[0].k, 'bomb'); assert(Math.abs(c.list[0].atMs - 1000 - 3000) < 20);
   assert.equal(g2.players[1].item, 'trap'); assert.equal(g2.players[1].itemN, 3);
+  assert.equal(g2.players[1].traps, 3); assert.equal(g2.players[1].bomb, 0);
   assert(g2.players[1].frozenMs > 1000);
-  assert.equal(g2.players[0].item, null);
+  assert.equal(g2.players[0].item, null); assert.equal(g2.players[0].bomb, 0);
   const k1 = ns.key; g.step(); assert.equal(items.netState(g).key, k1, 'key יציב כשלא השתנה דבר');
-  b.itemN = 4;
+  b.traps = 4; Items.sync(b);
   assert.notEqual(items.netState(g).key, k1, 'שינוי ערימה משנה את key');
 });
 test('השחקן במצב מהיר: הבורות/מלכודות נבדקים במקטע (אין מנהור)', () => {
@@ -293,22 +299,56 @@ test('v9.27: פצצות איסוף על הרצפה בנוסף לקופסאות, 
   pk.reset();
   assert.equal(pk.seedBombLoots(g), 0, 'בלי מצב מלכודת אין פצצות איסוף');
 });
-test('v9.27: איסוף 💣 מהרצפה כמו מקופסה; אם כבר מחזיקים פצצה היא נשארת לאחרים; מחליפה ערימת מלכודות', () => {
-  const { g, a } = fixture(); const pk = new Packs(); pk.reset(); pk.setItems(true);
+test('v9.27/v9.28: איסוף 💣 מהרצפה; אם כבר מחזיקים פצצה היא נשארת לאחרים; לא מוחקת מלכודות', () => {
+  const { g, a, items } = fixture(); const pk = new Packs(); pk.reset(); pk.setItems(true);
   pk.spawnCD = 1e9; pk.trapLootCD = 1e9; pk.bombLootCD = 1e9;
   pk.packs.push({ id: 1, x: a.x, y: a.y, kind: 'bombloot', effectId: 'bomb' }); pk.tick(g);
-  assert.equal(a.item, 'bomb'); assert.equal(a.itemN, 1);
+  assert.equal(Items.hasBomb(a) ? 1 : 0, 1); assert.equal(Items.traps(a), 0);
   pk.packs.push({ id: 2, x: a.x, y: a.y, kind: 'bombloot', effectId: 'bomb' }); pk.tick(g);
-  assert.equal(a.item, 'bomb'); assert.equal(pk.packs.length, 1, 'כשכבר מחזיקים 💣 הפצצה נשארת על המפה');
+  assert.equal(pk.packs.length, 1, 'כשכבר מחזיקים 💣 הפצצה נשארת על המפה');
   assert.equal(pk.packs[0].id, 2);
-  a.item = 'trap'; a.itemN = 4;
+  a.traps = 4; Items.sync(a);
   pk.packs.length = 0;
   pk.packs.push({ id: 3, x: a.x, y: a.y, kind: 'bombloot', effectId: 'bomb' }); pk.tick(g);
-  assert.equal(a.item, 'bomb'); assert.equal(a.itemN, 1, 'פצצה מחליפה ערימת מלכודות, כמו מקופסה');
-  assert.equal(pk.packs.length, 0);
-  // מלכודת מחליפה פצצה (כמו מקופסה)
+  assert.equal(Items.traps(a), 4); assert.equal(Items.hasBomb(a) ? 1 : 0, 1);
+  assert.equal(pk.packs.length, 1, 'גם עם מלכודות, פצצה שנייה נשארת על הרצפה');
+  pk.packs.length = 0;
   pk.packs.push({ id: 4, x: a.x, y: a.y, kind: 'traploot', effectId: 'trap' }); pk.tick(g);
-  assert.equal(a.item, 'trap'); assert.equal(a.itemN, 1);
+  assert.equal(Items.traps(a), 5); assert.equal(Items.hasBomb(a) ? 1 : 0, 1, 'מלכודת לא מוחקת פצצה');
+  const dTrap = items.drop(g, a, 'trap');
+  assert(dTrap && dTrap.k === 'trap');
+  assert.equal(Items.traps(a), 4); assert.equal(Items.hasBomb(a) ? 1 : 0, 1, 'הטלת מלכודת משאירה את הפצצה');
+  const dBomb = items.drop(g, a, 'bomb');
+  assert(dBomb && dBomb.k === 'bomb');
+  assert.equal(Items.traps(a), 4); assert.equal(Items.hasBomb(a) ? 1 : 0, 0);
+});
+test('v9.28: מחזיקים מלכודות ופצצה יחד; קופסת 💣 כשכבר יש פצצה נצרכת בלי שינוי מלאי; רשת עם שני שדות', () => {
+  const { g, a, b, items } = fixture(); const pk = new Packs(); pk.reset(); pk.setItems(true);
+  pk.spawnCD = 1e9; pk.trapLootCD = 1e9; pk.bombLootCD = 1e9;
+  a.traps = 3; a.bomb = 1; Items.sync(a);
+  pk.packs.push({ id: 1, x: a.x, y: a.y, effectId: 'bomb' }); pk.tick(g);
+  assert.equal(pk.packs.length, 0, 'קופסת 💣 נצרכת');
+  assert.equal(Items.traps(a), 3); assert.equal(Items.hasBomb(a) ? 1 : 0, 1);
+  const def = items.drop(g, a);   // בלי סוג: מלכודת קודם
+  assert(def && def.k === 'trap');
+  assert.equal(Items.traps(a), 2); assert.equal(Items.hasBomb(a) ? 1 : 0, 1);
+  const ns = items.netState(g);
+  assert.deepEqual(ns.msg.held, [2, 0]);
+  assert.deepEqual(ns.msg.bombs, [1, 0]);
+  const g2 = new Game({ size: 100 }); g2.addPlayer({}); g2.addPlayer({});
+  const c = new Items(); c.applyNet(g2, JSON.parse(JSON.stringify(ns.msg)), 1000, 1000 / 60);
+  assert.equal(g2.players[0].traps, 2); assert.equal(g2.players[0].bomb, 1);
+  assert.equal(g2.players[0].item, 'trap'); assert.equal(g2.players[0].itemN, 2);
+  // מארח ישן בלי bombs: held 10 = פצצה בלבד
+  const g3 = new Game({ size: 100 }); g3.addPlayer({}); g3.addPlayer({});
+  const c3 = new Items();
+  c3.applyNet(g3, { t: 'items', list: [], held: [10, 3], frz: [0, 0] }, 1000, 1000 / 60);
+  assert.equal(g3.players[0].bomb, 1); assert.equal(g3.players[0].traps, 0);
+  assert.equal(g3.players[1].traps, 3); assert.equal(g3.players[1].bomb, 0);
+  b.traps = 0; b.bomb = 0; Items.sync(b);
+  const k1 = items.netState(g).key;
+  a.bomb = 0; Items.sync(a);
+  assert.notEqual(items.netState(g).key, k1, 'שינוי פצצה משנה את key');
 });
 test('v9.27: סיכויי הקופסאות לא השתנו אחרי הוספת פצצות איסוף', () => {
   const pk = new Packs({ rand: seeded(3) }); pk.reset(); pk.setItems(true);

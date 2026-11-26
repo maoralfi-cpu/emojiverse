@@ -98,12 +98,13 @@
     // v9.21 מצב מלכודת: שימוש פשוט בפריט, ובריחה מפצצה חיה
     var IS = g.itemSystem;
     if (IS) {
-      if (p.item === 'bomb') {
+      if (p.bomb || p.item === 'bomb') {
         for (var e = 0; e < g.players.length; e++) {
           var en = g.players[e];
-          if (en !== p && en.alive && g.dist2(en.x, en.y, p.x, p.y) < 4 * 4) { IS.drop(g, p); break; }
+          if (en !== p && en.alive && g.dist2(en.x, en.y, p.x, p.y) < 4 * 4) { IS.drop(g, p, 'bomb'); break; }
         }
-      } else if (p.item === 'trap' && g.rand() < 0.01) IS.drop(g, p);
+      }
+      if ((p.traps || (!p.bomb && p.item === 'trap')) && g.rand() < 0.01) IS.drop(g, p, 'trap');
       var fl = IS.list.length ? IS.fleeAngle(g, p) : null;
       if (fl != null) want = fl;
     }
