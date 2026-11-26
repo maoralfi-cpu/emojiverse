@@ -68,12 +68,14 @@
     if (!pack) return 'gift';
     if (pack.kind === 'life' || pack.effectId === 'life') return 'heart';
     if (pack.kind === 'traploot') return 'snare';
+    if (pack.kind === 'bombloot') return 'mine';
     return Packs.LOOKS[pack.effectId] || 'gift';
   };
   Packs.emojiOf = function (pack) {
     if (!pack) return ICON;
     if (pack.kind === 'life' || pack.effectId === 'life') return LIFE.emoji;
     if (pack.kind === 'traploot') return '🪤';
+    if (pack.kind === 'bombloot') return '💣';
     var e = Packs.effect(pack.effectId);
     return (e && e.emoji) || ICON;
   };
@@ -93,7 +95,7 @@
     this.packs.length = 0;
     this.nextId = 1;
     this.spawnCD = 40;         // הופעה ראשונה אחרי ~0.7 שנ'
-    this.trapLootCD = 0;
+    this.trapLootCD = 0; this.bombLootCD = 0;
     this.active = {};
     this.events.length = 0;
   };
@@ -111,6 +113,7 @@
     var o = { id: pack.id, x: Math.round(pack.x * 100) / 100, y: Math.round(pack.y * 100) / 100 };
     if (pack.kind === 'life') o.kind = 'life';
     else if (pack.kind === 'traploot') { o.kind = 'traploot'; o.effectId = 'trap'; }
+    else if (pack.kind === 'bombloot') { o.kind = 'bombloot'; o.effectId = 'bomb'; }
     else if (this.reveal && pack.effectId && pack.effectId !== '?') o.effectId = pack.effectId;
     return o;
   };
@@ -118,7 +121,7 @@
   P.pool = function () { return this.items ? EFFECT_IDS.concat(ITEM_IDS) : EFFECT_IDS; };
   P.regularCount = function () {
     var n = 0, i, k;
-    for (i = 0; i < this.packs.length; i++) { k = this.packs[i].kind; if (k !== 'life' && k !== 'traploot') n++; }
+    for (i = 0; i < this.packs.length; i++) { k = this.packs[i].kind; if (k !== 'life' && k !== 'traploot' && k !== 'bombloot') n++; }
     return n;
   };
   P.heartCount = function () { var n = 0, i; for (i = 0; i < this.packs.length; i++) if (this.packs[i].kind === 'life') n++; return n; };
@@ -138,6 +141,23 @@
     var n = 0;
     if (!this.items) return 0;
     while (this.trapLootCount() < Packs.maxFor(g.W)) { if (!this.spawnTrapLoot(g)) break; n++; }
+    return n;
+  };
+  /* v9.27: פצצות איסוף על הרצפה, בנוסף לקופסאות ובמקביל למלכודות האיסוף. אותה תקרה ואותו קצב הופעה מחדש. */
+  P.bombLootCount = function () { var n = 0, i; for (i = 0; i < this.packs.length; i++) if (this.packs[i].kind === 'bombloot') n++; return n; };
+  P.spawnBombLoot = function (g, forced) {
+    if (!this.items || this.bombLootCount() >= Packs.maxFor(g.W)) return null;
+    var pos = forced || this.findPos(g);
+    if (!pos) return null;
+    var pack = { id: this.nextId++, x: g.wrap(pos.x), y: g.wrap(pos.y), effectId: 'bomb', kind: 'bombloot' };
+    this.packs.push(pack);
+    this.events.push({ type: 'spawn', pack: this.packPublic(pack) });
+    return pack;
+  };
+  P.seedBombLoots = function (g) {
+    var n = 0;
+    if (!this.items) return 0;
+    while (this.bombLootCount() < Packs.maxFor(g.W)) { if (!this.spawnBombLoot(g)) break; n++; }
     return n;
   };
   function canGain(p, cap) { return p.alive && !p.gone && (p.lives || 0) > 0 && (p.lives || 0) < cap; }
@@ -239,11 +259,13 @@
     var eid = pack.effectId;
     // v9.23: 🪤 נערם עד 9; בתקרה האיסוף לא נספר והמלכודת נשארת
     if (ITEMS[eid] && eid === 'trap' && player.item === 'trap' && (player.itemN || 1) >= 9) return null;
+    if (pack.kind === 'bombloot' && player.item === 'bomb') return null;   // v9.27: כבר מחזיקים 💣 – הפצצה נשארת לאחרים
     this.removePack(pack.id);
     if (ITEMS[eid]) {   // בלי להשפיע על אפקט פעיל. 🪤 נערם; סוג אחר מחליף את התא
       if (eid === 'trap' && player.item === 'trap') player.itemN = (player.itemN || 1) + 1;
       else { player.item = eid; player.itemN = 1; }
       if (pack.kind === 'traploot') this.trapLootCD = Math.max(this.trapLootCD, TRAPLOOT_EVERY);
+      if (pack.kind === 'bombloot') this.bombLootCD = Math.max(this.bombLootCD, TRAPLOOT_EVERY);
       this.events.push({ type: 'pick', packId: pack.id, playerId: player.id, effectId: eid });
       return ITEMS[eid];
     }
@@ -292,6 +314,7 @@
         if (!p.alive) continue;
         if (pack.kind === 'life' && !canGain(p, this.lifeCap)) continue;   // בתקרה – הלב נשאר לאחרים
         if ((pack.kind === 'traploot' || pack.effectId === 'trap') && p.item === 'trap' && (p.itemN || 1) >= 9) continue;
+        if (pack.kind === 'bombloot' && p.item === 'bomb') continue;
         d = g.dist2(p.x, p.y, pack.x, pack.y);
         if (d <= bestD) { bestD = d; best = p; }
       }
@@ -319,6 +342,11 @@
         if (this.spawnTrapLoot(g)) this.trapLootCD = TRAPLOOT_EVERY;
         else this.trapLootCD = 30;
       }
+      if (this.bombLootCD > 0) this.bombLootCD--;
+      else if (this.bombLootCount() < Packs.maxFor(g.W)) {
+        if (this.spawnBombLoot(g)) this.bombLootCD = TRAPLOOT_EVERY;
+        else this.bombLootCD = 30;
+      }
     }
 
     return this.events;
@@ -334,6 +362,7 @@
     this.packs = (list || []).map(function (p) {
       return p.kind === 'life' ? { id: p.id, x: p.x, y: p.y, effectId: 'life', kind: 'life' }
         : p.kind === 'traploot' ? { id: p.id, x: p.x, y: p.y, effectId: 'trap', kind: 'traploot' }
+        : p.kind === 'bombloot' ? { id: p.id, x: p.x, y: p.y, effectId: 'bomb', kind: 'bombloot' }
         : { id: p.id, x: p.x, y: p.y, effectId: p.effectId || p.e || '?' };
     });
     var max = 0;
@@ -346,6 +375,7 @@
     for (var i = 0; i < this.packs.length; i++) if (this.packs[i].id === id) return;
     this.packs.push(kind === 'life' ? { id: id, x: x, y: y, effectId: 'life', kind: 'life' }
       : kind === 'traploot' ? { id: id, x: x, y: y, effectId: 'trap', kind: 'traploot' }
+      : kind === 'bombloot' ? { id: id, x: x, y: y, effectId: 'bomb', kind: 'bombloot' }
       : { id: id, x: x, y: y, effectId: effectId || '?' });
     if (id >= this.nextId) this.nextId = id + 1;
   };
@@ -378,7 +408,7 @@
   Packs.draw = function (ctx, x, y, unitPx, now, pack, opts) {
     opts = opts || {};
     var look = Packs.lookOf(pack);
-    if (!opts.reveal && look !== 'heart' && !(pack && pack.kind === 'traploot')) look = 'gift';
+    if (!opts.reveal && look !== 'heart' && !(pack && (pack.kind === 'traploot' || pack.kind === 'bombloot'))) look = 'gift';
     var t = opts.reduced ? 0 : (now || 0) / 1000;
     var R = unitPx * 1.6;
     var pulse = opts.reduced ? 1 : 1 + 0.07 * Math.sin((now || 0) / 220);

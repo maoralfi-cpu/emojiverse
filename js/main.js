@@ -196,7 +196,7 @@
     if (mode !== 'client') {
       var n0 = Math.min(Packs.maxFor(g.W), 2);
       for (var i = 0; i < n0; i++) packs.spawnOne(g);
-      if (itemsOn) packs.seedTrapLoots(g);   // v9.23: מלכודות איסוף בנוסף לקופסאות
+      if (itemsOn) { packs.seedTrapLoots(g); packs.seedBombLoots(g); }   // v9.23/v9.27: מלכודות ופצצות איסוף בנוסף לקופסאות
       packs.events.length = 0;
       pits.seed(g, packs);
     }

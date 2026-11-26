@@ -356,7 +356,7 @@
     },
     // v9.5: חבילות – t:'pack' (לקוחות ישנים מתעלמים מטיפוס לא מוכר)
     onPack: function (ev) {
-      if (ev.type === 'spawn') { var sm = { t: 'pack', a: 'spawn', id: ev.pack.id, x: Math.round(ev.pack.x * 100) / 100, y: Math.round(ev.pack.y * 100) / 100 }; if (ev.pack.kind === 'life') sm.k = 'life'; if (ev.pack.effectId) sm.e = ev.pack.effectId; broadcast(sm); }
+      if (ev.type === 'spawn') { var sm = { t: 'pack', a: 'spawn', id: ev.pack.id, x: Math.round(ev.pack.x * 100) / 100, y: Math.round(ev.pack.y * 100) / 100 }; if (ev.pack.kind) sm.k = ev.pack.kind; if (ev.pack.effectId) sm.e = ev.pack.effectId; broadcast(sm); }
       else if (ev.type === 'pick') broadcast({ t: 'pack', a: 'pick', id: ev.packId, pid: ev.playerId, e: ev.effectId });
       else if (ev.type === 'end') broadcast({ t: 'pack', a: 'end', pid: ev.playerId });
     },

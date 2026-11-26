@@ -185,6 +185,9 @@ console.log('v9.25: הפתעות חוזרות לקופסאות; מלכודות �
   const traploot = stub();
   Packs.draw(traploot, 0, 0, 20, 0, { kind: 'traploot', effectId: 'trap' }, { reveal: false });
   ok(traploot.texts.includes('🪤') && !traploot.texts.includes('🎁'), 'מלכודת איסוף נשארת גלויה גם בלי reveal');
+  const bombloot = stub();
+  Packs.draw(bombloot, 0, 0, 20, 0, { kind: 'bombloot', effectId: 'bomb' }, { reveal: false });
+  ok(bombloot.texts.includes('💣') && !bombloot.texts.includes('🎁'), 'פצצת איסוף נשארת גלויה גם בלי reveal');
   const heart = stub();
   Packs.draw(heart, 0, 0, 20, 0, { kind: 'life', effectId: 'life' }, { reveal: false });
   ok(heart.texts.includes('❤️'), '❤️ גלוי גם במצב רגיל');
