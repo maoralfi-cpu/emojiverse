@@ -1,42 +1,67 @@
 #!/usr/bin/env python3
-"""v9.22 הפתעות גלויות במצב מהיר – בדיקת דפדפן (טלפון 412×915).
-במצב מהיר מציגים משטחים לפי סוג; במצב רגיל נשאר 🎁. שומר צילום ל-/workspace/v922_surfaces.png."""
+"""v9.25 – הפתעות חוזרות ל-🎁 גם במצב אקסטרים; מלכודות איסוף נשארות גלויות.
+בדיקת דפדפן (טלפון 412×915). צילומים: תפריט, משחק אקסטרים עם קופסאות, מלכודות גלויות."""
 import sys, os, subprocess, time, json
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SHOT = sys.argv[1] if len(sys.argv) > 1 else '/workspace/v922_surfaces.png'
+SHOT_EXTREME = sys.argv[1] if len(sys.argv) > 1 else '/workspace/v925_gifts.png'
+SHOT_MENU = sys.argv[2] if len(sys.argv) > 2 else '/workspace/v925_menu.png'
+SHOT_TRAPS = sys.argv[3] if len(sys.argv) > 3 else '/workspace/v925_traps.png'
 srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8782', '--bind', '127.0.0.1'], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(0.8)
 errors, fails, R = [], [], {}
 def check(c, m):
     print(('  ✓ ' if c else '  ✗ ') + m)
     if not c: fails.append(m)
-IDS = ['speed', 'slow', 'invert', 'wide', 'life', 'ice', 'ghost', 'dark', 'radar', 'trap', 'bomb']
-PLACE = '''() => {
+
+PLACE_GIFTS = '''() => {
   const k = window.__kovesh, g = k.game, me = k.me, packs = k.packs;
   packs.packs.length = 0; packs.spawnCD = 1e9;
   if (k.pits) k.pits.pits.length = 0;
   g.players.forEach(p => { p.invulnUntil = 1e9; if (p !== me) { p.x = p.px = 2; p.y = p.py = 2; p.trail.length = 0; } });
   const cx = me.homeX != null ? me.homeX : me.x, cy = me.homeY != null ? me.homeY : me.y;
   me.x = me.px = cx; me.y = me.py = cy; me.trail.length = 0; me.h = me.target = -Math.PI / 2;
-  const ids = %s;
+  const ids = ['speed','slow','invert','wide','ice','ghost','dark','radar'];
   const cols = 4, dx = 3.7, dy = 4.4;
   let n = 0;
   ids.forEach((id, i) => {
-    const col = i %% cols, row = Math.floor(i / cols);
+    const col = i % cols, row = Math.floor(i / cols);
     const x = g.wrap(cx + (col - 1.5) * dx);
     const y = g.wrap(cy + (row - 1) * dy);
-    const pack = { id: ++n, x, y, effectId: id };
-    if (id === 'life') pack.kind = 'life';
-    packs.packs.push(pack);
+    packs.packs.push({ id: ++n, x, y, effectId: id });
   });
   packs.nextId = n + 1;
   window.__lockPos = window.__lockPos || setInterval(() => {
     if (!me.alive) return;
     me.x = me.px = cx; me.y = me.py = cy; me.trail.length = 0;
   }, 30);
-  return { reveal: !!packs.reveal, count: packs.packs.length, looks: packs.packs.map(p => Packs.lookOf(p)), speed: g.SPEED };
-}''' % json.dumps(IDS)
+  return { reveal: !!packs.reveal, count: packs.packs.length, speed: g.SPEED, feed: (document.getElementById('feed')||{}).textContent || '' };
+}'''
+
+PLACE_TRAPS = '''() => {
+  const k = window.__kovesh, g = k.game, me = k.me, packs = k.packs;
+  packs.packs.length = 0; packs.spawnCD = 1e9; packs.trapLootCD = 1e9;
+  if (k.pits) k.pits.pits.length = 0;
+  g.players.forEach(p => { p.invulnUntil = 1e9; if (p !== me) { p.x = p.px = 2; p.y = p.py = 2; p.trail.length = 0; } });
+  const cx = me.homeX != null ? me.homeX : me.x, cy = me.homeY != null ? me.homeY : me.y;
+  me.x = me.px = cx; me.y = me.py = cy; me.trail.length = 0; me.h = me.target = -Math.PI / 2;
+  let n = 0;
+  // שורת קופסאות הפתעה
+  ['speed','ice','radar'].forEach((id, i) => {
+    packs.packs.push({ id: ++n, x: g.wrap(cx + (i - 1) * 3.6), y: g.wrap(cy - 4.2), effectId: id });
+  });
+  // מלכודות איסוף גלויות
+  for (let i = 0; i < 3; i++) {
+    packs.packs.push({ id: ++n, x: g.wrap(cx + (i - 1) * 3.6), y: g.wrap(cy + 3.8), effectId: 'trap', kind: 'traploot' });
+  }
+  packs.nextId = n + 1;
+  window.__lockPos = window.__lockPos || setInterval(() => {
+    if (!me.alive) return;
+    me.x = me.px = cx; me.y = me.py = cy; me.trail.length = 0;
+  }, 30);
+  return { reveal: !!packs.reveal, gifts: packs.regularCount(), traps: packs.trapLootCount(), itemsOn: !!k.itemsOn };
+}'''
+
 try:
     with sync_playwright() as p:
         b = p.chromium.launch(channel='chrome', headless=True)
@@ -45,108 +70,95 @@ try:
         pg.on('console', lambda m: m.type == 'error' and errors.append(m.text))
         pg.on('pageerror', lambda e: errors.append(str(e)))
 
-        print('מצב רגיל')
+        print('תפריט')
         pg.goto('http://127.0.0.1:8782/', wait_until='load')
         pg.wait_for_timeout(500)
+        btn = pg.evaluate("document.querySelector('#speedSeg button[data-v=\"fast\"]').textContent")
+        R['menu_btn'] = btn
+        check(btn and 'מצב אקסטרים' in btn, 'כפתור התפריט: «מצב אקסטרים» (קיבל: %s)' % btn)
+        check(pg.evaluate("document.querySelector('#speedSeg button[data-v=\"fast\"]').dataset.v") == 'fast', 'המזהה הפנימי נשאר fast')
         check(pg.evaluate("document.querySelector('#speedSeg button.on').dataset.v") == 'normal', 'ברירת מחדל: מהירות רגילה')
-        pg.click('#playBtn')
-        pg.wait_for_timeout(900)
-        check(pg.evaluate("window.__kovesh.state") == 'play', 'משחק רגיל התחיל')
-        normal = pg.evaluate(PLACE)
-        R['normal'] = normal
-        check(normal['reveal'] is False, 'מצב רגיל: packs.reveal כבוי')
-        gift = pg.evaluate("""() => {
-          const c = document.createElement('canvas'); c.width = 80; c.height = 80;
-          const x = c.getContext('2d');
-          Packs.draw(x, 40, 40, 22, 0, { effectId: 'speed' }, { reveal: false });
-          return x.getTransform && Packs.lookOf({ effectId: 'speed' }) === 'boost';
-        }""")
-        # Sample canvas pixels around packs: in normal mode we only check the API path + no reveal.
-        drawn = pg.evaluate("""() => {
-          const results = {};
-          ['speed','slow','life'].forEach(id => {
-            const c = document.createElement('canvas'); c.width = 90; c.height = 90;
-            const x = c.getContext('2d');
-            x.fillStyle = '#f4f6fa'; x.fillRect(0,0,90,90);
-            const pack = id === 'life' ? { kind: 'life', effectId: 'life' } : { effectId: id };
-            Packs.draw(x, 45, 45, 24, 400, pack, { reveal: false });
-            const d = x.getImageData(20, 20, 50, 50).data;
-            let ink = 0;
-            for (let i = 0; i < d.length; i += 4) if (d[i+3] > 20 && (Math.abs(d[i]-244)>8 || Math.abs(d[i+1]-246)>8 || Math.abs(d[i+2]-250)>8)) ink++;
-            results[id] = ink;
-          });
-          return results;
-        }""")
-        R['normal_ink'] = drawn
-        check(drawn['speed'] > 30 and drawn['life'] > 30, 'מצב רגיל: 🎁 ו-❤️ באמת מצוירים (%s)' % drawn)
-        pg.screenshot(path=os.path.join(os.path.dirname(SHOT) or '.', 'v922_normal_gift.png'))
+        help_txt = pg.evaluate("document.querySelector('#help').innerText")
+        check('מצב אקסטרים' in help_txt and 'מצב מהיר' not in help_txt, 'בעזרה: מצב אקסטרים, בלי «מצב מהיר»')
+        os.makedirs(os.path.dirname(SHOT_MENU) or '.', exist_ok=True)
+        pg.screenshot(path=SHOT_MENU, full_page=False)
+        check(os.path.isfile(SHOT_MENU) and os.path.getsize(SHOT_MENU) > 10000, 'צילום תפריט: ' + SHOT_MENU)
 
-        print('מצב מהיר')
-        pg.goto('http://127.0.0.1:8782/', wait_until='load')
-        pg.wait_for_timeout(400)
+        print('מצב אקסטרים – קופסאות הפתעה')
         pg.click('#speedSeg button[data-v="fast"]')
         pg.click('#playBtn')
         pg.wait_for_timeout(900)
-        check(pg.evaluate("window.__kovesh.state") == 'play', 'משחק מהיר התחיל')
-        fast = pg.evaluate(PLACE)
-        R['fast'] = fast
-        check(fast['reveal'] is True, 'מצב מהיר: packs.reveal דולק')
-        check(fast['count'] == 11, '11 משטחים על המפה')
-        expected = ['boost','mud','vortex','beacon','heart','ice','mist','lantern','radar','snare','mine']
-        check(fast['looks'] == expected, 'lookOf לכל הסוגים: ' + json.dumps(fast['looks'], ensure_ascii=False))
-        # Pixel signatures: boost lane vs gift should differ; each type should paint something
-        sig = pg.evaluate("""() => {
-          function ink(reveal, id) {
+        check(pg.evaluate("window.__kovesh.state") == 'play', 'משחק אקסטרים התחיל')
+        extreme = pg.evaluate(PLACE_GIFTS)
+        R['extreme'] = extreme
+        check(extreme['reveal'] is False, 'מצב אקסטרים: packs.reveal כבוי')
+        check(extreme['count'] == 8, '8 הפתעות על המפה')
+        check('מצב אקסטרים' in extreme['feed'], 'הודעת «מצב אקסטרים» בפיד')
+        ink = pg.evaluate("""() => {
+          function draw(pack, reveal) {
             const c = document.createElement('canvas'); c.width = 90; c.height = 90;
             const x = c.getContext('2d');
             x.fillStyle = '#f4f6fa'; x.fillRect(0,0,90,90);
-            const pack = id === 'life' ? { kind: 'life', effectId: 'life' } : { effectId: id };
-            Packs.draw(x, 45, 45, 24, 900, pack, { reveal });
-            const d = x.getImageData(0, 0, 90, 90).data;
-            let n = 0, r = 0, g = 0, b = 0;
-            for (let i = 0; i < d.length; i += 4) {
-              if (d[i+3] > 20 && (Math.abs(d[i]-244)>8 || Math.abs(d[i+1]-246)>8 || Math.abs(d[i+2]-250)>8)) {
-                n++; r += d[i]; g += d[i+1]; b += d[i+2];
-              }
-            }
-            return n ? [n, Math.round(r/n), Math.round(g/n), Math.round(b/n)] : [0,0,0,0];
+            Packs.draw(x, 45, 45, 24, 400, pack, { reveal });
+            const d = x.getImageData(20, 20, 50, 50).data;
+            let n = 0;
+            for (let i = 0; i < d.length; i += 4) if (d[i+3] > 20 && (Math.abs(d[i]-244)>8 || Math.abs(d[i+1]-246)>8 || Math.abs(d[i+2]-250)>8)) n++;
+            return n;
           }
-          const ids = %s;
-          const out = {};
-          ids.forEach(id => { out[id] = { gift: ink(false, id), surf: ink(true, id) }; });
-          return out;
-        }""" % json.dumps(IDS))
-        R['sig'] = sig
-        # gift look for non-life should match across types (same 🎁), surfaces should differ
-        gift_n = sig['speed']['gift'][0]
-        check(gift_n > 30, '🎁 במצב רגיל מצייר פיקסלים')
-        check(sig['life']['gift'][0] > 30 and sig['life']['surf'][0] > 30, '❤️ מצויר בשני המצבים')
-        # surfaces of speed/slow should not match the gift average color too closely AND should differ from each other
-        def dist(a, b):
-            return abs(a[1]-b[1]) + abs(a[2]-b[2]) + abs(a[3]-b[3])
-        check(sig['speed']['surf'][0] > 40, 'מסלול האצה מצויר')
-        check(dist(sig['speed']['surf'], sig['slow']['surf']) > 40, 'האצה ובוץ בצבעים שונים')
-        check(dist(sig['speed']['surf'], sig['speed']['gift']) > 25, 'מסלול האצה שונה מ-🎁')
-        all_ok = all(sig[i]['surf'][0] > 20 for i in IDS)
-        check(all_ok, 'כל 11 הסוגים מציירים משטח (או ❤️)')
-
-        pg.evaluate("""() => {
-          ['board','stats','feed'].forEach(id => { const e = document.getElementById(id); if (e) e.style.visibility = 'hidden'; });
-          const box = document.createElement('div');
-          box.id = 'v922legend';
-          box.style.cssText = 'position:fixed;bottom:92px;left:8px;right:8px;z-index:99;background:rgba(46,52,64,.9);color:#eceff4;font:11px/1.4 system-ui,sans-serif;padding:8px 10px;border-radius:10px;text-align:right;pointer-events:none';
-          box.textContent = 'v9.23 מצב מהיר: ⚡מסלול  🐢בוץ  🌀מערבולת  🔭מגדלור  ❤️לב  🧊קרח  👻ערפל  🔦פנס  📡רדאר  🪤מלכודת  💣מוקש';
-          document.body.appendChild(box);
+          return {
+            giftOff: draw({ effectId: 'speed' }, false),
+            giftExtreme: draw({ effectId: 'speed' }, Packs.revealForSpeed('fast')),
+            radar: draw({ effectId: 'radar' }, Packs.revealForSpeed('fast')),
+            heart: draw({ kind: 'life', effectId: 'life' }, false),
+            trap: draw({ kind: 'traploot', effectId: 'trap' }, false)
+          };
         }""")
+        R['ink'] = ink
+        check(ink['giftOff'] > 30 and ink['giftExtreme'] > 30 and ink['radar'] > 30, '🎁 מצויר במצב אקסטרים (%s)' % ink)
+        # השוואת חתימה: האצה ורדאר בלי reveal צריכים להיות אותו 🎁
+        same = pg.evaluate("""() => {
+          function sig(pack, reveal) {
+            const c = document.createElement('canvas'); c.width = 90; c.height = 90;
+            const x = c.getContext('2d');
+            x.fillStyle = '#f4f6fa'; x.fillRect(0,0,90,90);
+            Packs.draw(x, 45, 45, 24, 0, pack, { reveal, reduced: true });
+            return Array.from(x.getImageData(0,0,90,90).data);
+          }
+          const a = sig({ effectId: 'speed' }, false);
+          const b = sig({ effectId: 'radar' }, Packs.revealForSpeed('fast'));
+          let diff = 0;
+          for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
+          return diff;
+        }""")
+        check(same == 0, 'האצה ורדאר במצב אקסטרים נראים אותו 🎁 (diff=%s)' % same)
+        check(ink['heart'] > 30 and ink['trap'] > 30, '❤️ ומלכודת איסוף מצוירים גם בלי reveal')
+        pg.wait_for_timeout(300)
+        os.makedirs(os.path.dirname(SHOT_EXTREME) or '.', exist_ok=True)
+        pg.screenshot(path=SHOT_EXTREME, full_page=False)
+        check(os.path.isfile(SHOT_EXTREME) and os.path.getsize(SHOT_EXTREME) > 10000, 'צילום אקסטרים: ' + SHOT_EXTREME)
+
+        print('מצב מלכודת + אקסטרים')
+        pg.goto('http://127.0.0.1:8782/', wait_until='load')
         pg.wait_for_timeout(400)
-        os.makedirs(os.path.dirname(SHOT) or '.', exist_ok=True)
-        pg.screenshot(path=SHOT, full_page=False)
-        check(os.path.isfile(SHOT) and os.path.getsize(SHOT) > 10000, 'צילום נשמר: ' + SHOT)
+        pg.click('#speedSeg button[data-v="fast"]')
+        pg.click('#trapSeg button[data-v="on"]')
+        pg.click('#playBtn')
+        pg.wait_for_timeout(900)
+        check(pg.evaluate("window.__kovesh.state") == 'play', 'משחק אקסטרים+מלכודת התחיל')
+        traps = pg.evaluate(PLACE_TRAPS)
+        R['traps'] = traps
+        check(traps['reveal'] is False, 'גם עם מלכודות: reveal כבוי')
+        check(traps['gifts'] == 3 and traps['traps'] == 3, '3 קופסאות ו-3 מלכודות איסוף')
+        check(traps['itemsOn'] is True, 'מצב מלכודת פעיל')
+        pg.wait_for_timeout(300)
+        os.makedirs(os.path.dirname(SHOT_TRAPS) or '.', exist_ok=True)
+        pg.screenshot(path=SHOT_TRAPS, full_page=False)
+        check(os.path.isfile(SHOT_TRAPS) and os.path.getsize(SHOT_TRAPS) > 10000, 'צילום מלכודות: ' + SHOT_TRAPS)
 
         ctx.close(); b.close()
 finally:
     srv.terminate()
 check(not errors, 'בלי שגיאות דף ' + (json.dumps(errors, ensure_ascii=False) if errors else ''))
-print(json.dumps({k: R[k] for k in R if k != 'sig'}, ensure_ascii=False, indent=2))
+print(json.dumps(R, ensure_ascii=False, indent=2))
 print('PASS' if not fails else 'FAIL: ' + json.dumps(fails, ensure_ascii=False))
 sys.exit(1 if fails else 0)

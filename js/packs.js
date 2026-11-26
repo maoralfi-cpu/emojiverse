@@ -1,5 +1,5 @@
 /* Emojiverse – חבילות הפתעה (v9.5). טבלאת אפקטים + לוגיקת הופעה/איסוף/תפוגה (נבדק ב-node).
-   חבילה מוצגת כ-🎁 עד האיסוף. במצב מהיר (v9.22) היא נראית כמשטח על הקרקע לפי הסוג.
+   חבילה מוצגת כ-🎁 עד האיסוף. v9.22–v9.23 הציגו משטח לפי סוג במצב מהיר; מ-v9.25 ההפתעות שוב קופסאות בכל המצבים. מלכודות איסוף (traploot) נשארות גלויות.
    המארח מחליט על הופעה ואיסוף; אפקטים חזותיים מקומיים לאוסף. */
 (function (root) {
   'use strict';
@@ -40,7 +40,7 @@
     this.lifeStart = 0;        // 0 = מצב סיבובים (אין לבבות)
     this.heartCD = 0;
     this.items = false;        // v9.21 מצב מלכודת: 🪤/💣 בתוך הקופסאות
-    this.reveal = false;       // v9.22: במצב מהיר הסוג גלוי (משטח) ומשודר לאורח
+    this.reveal = false;       // v9.22 היה גילוי סוג במצב מהיר; v9.25 כבוי תמיד (הפתעות = 🎁)
   }
 
   /* v9.21: פריטי מצב מלכודת – נכנסים למאגר רק כשהמצב פעיל; לא מפעילים כלום באיסוף, רק נשמרים בתא */
@@ -77,7 +77,8 @@
     var e = Packs.effect(pack.effectId);
     return (e && e.emoji) || ICON;
   };
-  Packs.revealForSpeed = function (s) { return s === 'fast'; };
+  /* v9.25: ההפתעות חוזרות לקופסאות גם במצב אקסטרים (id הפנימי נשאר 'fast'). */
+  Packs.revealForSpeed = function (s) { return false; };
 
   Packs.maxFor = function (W) {
     return Math.max(2, Math.round((W || 100) / 45));   // 80→2, 100→2, 130→3
@@ -105,7 +106,7 @@
   };
   P.setItems = function (on) { this.items = !!on; };
   P.setReveal = function (on) { this.reveal = !!on; };
-  /* רשימה/אירוע רשת: במצב רגיל בלי סוג (הפתעה); במצב מהיר עם effectId כדי שהאורח יצייר אותו משטח */
+  /* רשימה/אירוע רשת: בלי סוג להפתעות (🎁). אם reveal דולק – עם effectId (נשאר לתאימות). מלכודת איסוף/לב תמיד עם kind. */
   P.packPublic = function (pack) {
     var o = { id: pack.id, x: Math.round(pack.x * 100) / 100, y: Math.round(pack.y * 100) / 100 };
     if (pack.kind === 'life') o.kind = 'life';

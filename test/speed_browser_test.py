@@ -1,7 +1,7 @@
-"""v9.18 מצב מהיר – בדיקת דפדפן (טלפון 412x915).
+"""v9.18 מצב אקסטרים – בדיקת דפדפן (טלפון 412x915).
 הרצה: /home/box/factory/tools/.venv/bin/python test/speed_browser_test.py [--shots DIR]
-סולו: ברירת מחדל רגיל, בחירה ב"מהיר" נשמרת, המשחק רץ ב-×1.5 והדמות באמת זזה מהר יותר.
-אונליין (צינור מקומי): המארח בוחר מהיר, הלקוח רואה את הבחירה (לקריאה בלבד), וכל המשחקים (כולל מצטרף באמצע) ב-×1.5.
+סולו: ברירת מחדל רגיל, בחירה ב"מצב אקסטרים" נשמרת, המשחק רץ ב-×1.5 והדמות באמת זזה מהר יותר.
+אונליין (צינור מקומי): המארח בוחר מצב אקסטרים, הלקוח רואה את הבחירה (לקריאה בלבד), וכל המשחקים (כולל מצטרף באמצע) ב-×1.5.
 וגם: ההודעה הכללית לכשל חיבור לא מזכירה "אותה רשת"/Hotspot."""
 import sys, os, json, time, subprocess
 from playwright.sync_api import sync_playwright
@@ -36,11 +36,11 @@ try:
         pg.goto(url); pg.wait_for_timeout(400)
         pg.click('#speedSeg button[data-v="fast"]')
         pg.goto(url); pg.wait_for_timeout(500)
-        check(pg.evaluate("document.querySelector('#speedSeg button.on').dataset.v") == 'fast', 'הבחירה "מהיר" נשמרת אחרי טעינה מחדש')
+        check(pg.evaluate("document.querySelector('#speedSeg button.on').dataset.v") == 'fast', 'הבחירה "מצב אקסטרים" נשמרת אחרי טעינה מחדש')
         pg.screenshot(path=os.path.join(SHOTS, 'v918_menu_412x915.png'))
         pg.click('#playBtn'); poll(pg, "window.__kovesh.state==='play'")
         check(abs(pg.evaluate('window.__kovesh.game.SPEED') - FAST) < 1e-9, 'משחק מהיר: SPEED=%.3f' % FAST)
-        check('מצב מהיר' in pg.evaluate("document.getElementById('feed').textContent"), 'הודעת "מצב מהיר" בתחילת המשחק')
+        check('מצב אקסטרים' in pg.evaluate("document.getElementById('feed').textContent"), 'הודעת "מצב אקסטרים" בתחילת המשחק')
         # מהירות אמיתית: מרחק לאורך ~1 שנייה של צעדים (לפי tickNo)
         d = pg.evaluate("""() => new Promise(r => { const k = window.__kovesh, g = k.game, m = k.me; const x0 = m.x, y0 = m.y, t0 = g.tickNo;
             setTimeout(() => { const dx = Game.wrapDelta(m.x - x0, g.W), dy = Game.wrapDelta(m.y - y0, g.W); r([Math.hypot(dx, dy), g.tickNo - t0, m.alive, m.speedMul || 1]); }, 700); })""")
@@ -61,7 +61,7 @@ try:
         host.click('#mpSpeedSeg button[data-v="fast"]')
         cli.goto(url + '?transport=local&room=' + code)
         check(poll(cli, "!document.getElementById('lobby').classList.contains('hidden')", 20000), 'הלקוח בלובי')
-        check(poll(cli, "document.querySelector('#mpSpeedSeg button.on').dataset.v==='fast'"), 'הלקוח רואה "מהיר" שהמארח בחר')
+        check(poll(cli, "document.querySelector('#mpSpeedSeg button.on').dataset.v==='fast'"), 'הלקוח רואה "מצב אקסטרים" שהמארח בחר')
         check(cli.evaluate("[...document.querySelectorAll('#mpSpeedSeg button')].every(b=>b.disabled)"), 'אצל הלקוח הבחירה לקריאה בלבד')
         poll(host, "document.querySelectorAll('#lobbyPlayers li').length===2")
         host.evaluate("document.activeElement && document.activeElement.blur()")
@@ -71,7 +71,7 @@ try:
         check(poll(host, "window.__kovesh.state==='play'") and poll(cli, "window.__kovesh.state==='play'"), 'הסיבוב התחיל אצל שניהם')
         check(abs(host.evaluate('window.__kovesh.game.SPEED') - FAST) < 1e-9, 'מארח: SPEED מהיר')
         check(abs(cli.evaluate('window.__kovesh.game.SPEED') - FAST) < 1e-9, 'לקוח: SPEED מהיר (הגיע ב-start)')
-        check(poll(cli, "window.__kovesh.me.alive && document.getElementById('feed').textContent.includes('מצב מהיר')", 5000), 'לקוח: הודעת מצב מהיר')
+        check(poll(cli, "window.__kovesh.me.alive && document.getElementById('feed').textContent.includes('מצב אקסטרים')", 5000), 'לקוח: הודעת מצב אקסטרים')
         # הלקוח זז במהירות של המארח (אינטרפולציה)
         d = cli.evaluate("""() => new Promise(r => { const k = window.__kovesh, g = k.game, m = k.me; const x0 = m.x, y0 = m.y, t = performance.now();
             setTimeout(() => { r([Math.hypot(Game.wrapDelta(m.x - x0, g.W), Game.wrapDelta(m.y - y0, g.W)), (performance.now() - t) / 1000, m.alive]); }, 600); })""")

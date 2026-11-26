@@ -107,7 +107,7 @@ console.log('v9.19: ארבע ההפתעות החדשות');
   ok(!ic.p.ice, 'החלפת אפקט מבטלת קרח');
 }
 
-console.log('v9.22: משטחים גלויים במצב מהיר');
+console.log('v9.25: הפתעות חוזרות לקופסאות; מלכודות איסוף גלויות');
 {
   const looks = Packs.LOOKS;
   ['speed', 'slow', 'invert', 'wide', 'ice', 'ghost', 'dark', 'radar'].forEach(id => {
@@ -118,7 +118,7 @@ console.log('v9.22: משטחים גלויים במצב מהיר');
   ok(Packs.lookOf({ effectId: 'speed' }) === 'boost', 'lookOf(speed)=boost');
   ok(Packs.lookOf({ kind: 'life', effectId: 'life' }) === 'heart', 'lookOf(life)=heart');
   ok(Packs.lookOf({ effectId: '?' }) === 'gift' && Packs.lookOf({ effectId: 'nope' }) === 'gift', 'סוג לא מוכר / סודי → 🎁');
-  ok(Packs.revealForSpeed('fast') && !Packs.revealForSpeed('normal') && !Packs.revealForSpeed(undefined), 'reveal רק במצב מהיר');
+  ok(!Packs.revealForSpeed('fast') && !Packs.revealForSpeed('normal') && !Packs.revealForSpeed(undefined), 'reveal כבוי גם במצב אקסטרים (id: fast)');
 
   const g = new Game({ size: 80, rand: seeded(1) });
   const pl = g.addPlayer({}); g.spawn(pl, { x: 10, y: 10 });
@@ -131,9 +131,13 @@ console.log('v9.22: משטחים גלויים במצב מהיר');
   packs.reset(); packs.setReveal(true);
   const shown = packs.spawnOne(g, { x: 40, y: 40 });
   const ev1 = packs.events.find(e => e.type === 'spawn');
-  ok(ev1 && ev1.pack.effectId === shown.effectId, 'מצב מהיר: spawn כולל effectId');
+  ok(ev1 && ev1.pack.effectId === shown.effectId, 'אם reveal דולק במכוון: spawn כולל effectId');
   const list = packs.publicList();
-  ok(list.length === 1 && list[0].effectId === shown.effectId, 'מצב מהיר: publicList כולל effectId');
+  ok(list.length === 1 && list[0].effectId === shown.effectId, 'אם reveal דולק במכוון: publicList כולל effectId');
+
+  packs.reset(); packs.setReveal(Packs.revealForSpeed('fast'));
+  packs.spawnOne(g, { x: 40, y: 40 });
+  ok(packs.publicList().every(p => !('effectId' in p)), 'מצב אקסטרים: publicList בלי effectId (🎁)');
 
   const guest = new Packs(); guest.reset(); guest.setReveal(true);
   guest.clientSpawn(7, 20, 21, undefined, 'ice');
@@ -175,12 +179,18 @@ console.log('v9.22: משטחים גלויים במצב מהיר');
   const gift = stub();
   Packs.draw(gift, 0, 0, 20, 0, { effectId: 'speed' }, { reveal: false });
   ok(gift.texts.includes('🎁'), 'מצב רגיל: מציירים 🎁 גם להאצה');
+  const extreme = stub();
+  Packs.draw(extreme, 0, 0, 20, 0, { effectId: 'radar' }, { reveal: Packs.revealForSpeed('fast') });
+  ok(extreme.texts.includes('🎁') && !extreme.texts.includes('📡'), 'מצב אקסטרים: הפתעה = 🎁 ולא משטח');
+  const traploot = stub();
+  Packs.draw(traploot, 0, 0, 20, 0, { kind: 'traploot', effectId: 'trap' }, { reveal: false });
+  ok(traploot.texts.includes('🪤') && !traploot.texts.includes('🎁'), 'מלכודת איסוף נשארת גלויה גם בלי reveal');
   const heart = stub();
   Packs.draw(heart, 0, 0, 20, 0, { kind: 'life', effectId: 'life' }, { reveal: false });
   ok(heart.texts.includes('❤️'), '❤️ גלוי גם במצב רגיל');
   const boost = stub();
   Packs.draw(boost, 0, 0, 20, 800, { effectId: 'speed' }, { reveal: true });
-  ok(!boost.texts.includes('🎁') && boost.texts.includes('⚡') && boost.calls.includes('ellipse'), 'מצב מהיר: האצה = מסלול + ⚡ (לא 🎁)');
+  ok(!boost.texts.includes('🎁') && boost.texts.includes('⚡') && boost.calls.includes('ellipse'), 'אם reveal דולק במכוון: האצה = מסלול + ⚡ (לא 🎁)');
   const kinds = ['slow', 'invert', 'wide', 'ice', 'ghost', 'dark', 'radar', 'trap', 'bomb'];
   let drew = 0;
   kinds.forEach(id => {

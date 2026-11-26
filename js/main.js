@@ -135,7 +135,7 @@
     livesStart = S.smode === '3' || S.smode === '5' ? Lives.norm(S.smode) : 0;
     itemsOn = Items.norm(S.traps) === 'on';
     S.name = $('nameInput').value.trim(); save('kovesh.settings', S);
-    g = new Game({ size: S.size, speed: Game.speedFor(S.speed) });   // v9.18: רגיל / מהיר
+    g = new Game({ size: S.size, speed: Game.speedFor(S.speed) });   // v9.18/v9.25: רגיל / אקסטרים (id: fast)
     startBest = { pct: BEST.pct, kills: BEST.kills };
     var myAv = 0, myCol = Avatars.list[myAv].color;   // צבעי השטח – פלטת הפסטל הנורדי
     var myEmo = Emoji.valid(S.emoji) ? S.emoji : Emoji.randomFree([]), usedEmo = [myEmo];
@@ -201,7 +201,7 @@
       pits.seed(g, packs);
     }
     updateHud(true);
-    if (g.SPEED > Game.BASE_SPEED) feed('🚀 מצב מהיר – כולם זזים מהר יותר');
+    if (g.SPEED > Game.BASE_SPEED) feed('🚀 מצב אקסטרים – כולם זזים מהר יותר');
     if (itemsOn) feed('🪤 מצב מלכודת – 🎁 יכולה להכיל מלכודת או פצצה');
     startLoop();
   }
@@ -790,7 +790,7 @@
     ctx.globalAlpha = 1;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // v9.5/v9.22: חבילות – 🎁 במצב רגיל; במצב מהיר משטח לפי סוג (לא במפה הקטנה)
+    // v9.5/v9.25: חבילות הפתעה כ-🎁 בכל המצבים; ❤️ ומלכודות איסוף גלויות (לא במפה הקטנה)
     if (packs.packs.length) {
       var reveal = !!packs.reveal, reducedPacks = fxLevel() !== 'full';
       for (k = 0; k < packs.packs.length; k++) {
