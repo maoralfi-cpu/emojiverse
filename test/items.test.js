@@ -198,4 +198,69 @@ test('השחקן במצב מהיר: הבורות/מלכודות נבדקים ב�
   const d = g.events.find(e => e.type === 'death' && e.victim === b);
   assert(d && d.reason === 'trap' && d.killer === a);
 });
+
+test('💣 רדיוס פיצוץ פי 2.5: 8.75 יח׳ = 17.5 תאים; ראש מחוץ לישן ובתוך החדש נפסל', () => {
+  assert.equal(Items.BLAST_R, Items.BLAST_R_OLD * 2.5);
+  assert.equal(Items.BLAST_R, 8.75);
+  const { g, a, b, items } = fixture();
+  const c = g.addPlayer({ name: 'C' }); g.spawn(c, { x: 90, y: 90 });
+  const bx = 50, by = 50;
+  // B במרחק 5 (מעל 3.5, מתחת ל-8.75) – נפסל ברדיוס החדש
+  b.x = bx + 5; b.y = by; b.px = b.x; b.py = b.y; b.frozenUntil = 1e9; b.trail = [];
+  // C במרחק 9 (> 8.75) – שורד
+  c.x = bx + 9; c.y = by; c.px = c.x; c.py = c.y; c.frozenUntil = 1e9; c.trail = [];
+  a.item = 'bomb'; a.x = bx; a.y = by; items.drop(g, a);
+  a.x = 10; a.y = 10; a.frozenUntil = 1e9; a.trail = [];
+  steps(g, Items.FUSE_TICKS);
+  assert(!b.alive, 'B במרחק 5 נפסל ברדיוס החדש');
+  assert(c.alive, 'C במרחק 9 שורד');
+  const d = g.events.find(e => e.type === 'death' && e.victim === b);
+  assert(d && d.reason === 'bomb' && d.killer === a);
+});
+test('💣 פיצוץ שפוגע בשובל פתוח פוסל גם כשהראש מחוץ לרדיוס', () => {
+  const { g, a, b, items } = fixture();
+  const bx = 40, by = 40;
+  a.item = 'bomb'; a.x = bx; a.y = by; items.drop(g, a);
+  a.x = 10; a.y = 80; a.px = a.x; a.py = a.y; a.frozenUntil = 1e9; a.trail = [];
+  // הראש של B מחוץ לרדיוס, אבל השובל חוצה את נקודת הפיצוץ
+  b.x = bx; b.y = by + Items.BLAST_R + 3; b.px = b.x; b.py = b.y; b.frozenUntil = 1e9;
+  steps(g, Items.FUSE_TICKS - 1);
+  assert(b.alive, 'לפני הפיצוץ');
+  b.trail = [b.x, b.y, bx, by];
+  g.events.length = 0; steps(g, 1);
+  assert(!b.alive, 'שובל בטווח – נפסל');
+  const d = g.events.find(e => e.type === 'death' && e.victim === b);
+  assert(d && d.reason === 'bomb' && d.killer === a);
+  assert(items.events.some(e => e.type === 'boom' && e.victims.includes(b.id)));
+});
+test('💣 שובל שעובר ליד הפיצוץ אבל מחוץ לרדיוס לא פוסל', () => {
+  const { g, a, b, items } = fixture();
+  const bx = 40, by = 40;
+  a.item = 'bomb'; a.x = bx; a.y = by; items.drop(g, a);
+  a.x = 10; a.y = 80; a.px = a.x; a.py = a.y; a.frozenUntil = 1e9; a.trail = [];
+  const far = Items.BLAST_R + 3;
+  b.x = bx + far; b.y = by + far; b.px = b.x; b.py = b.y; b.frozenUntil = 1e9;
+  steps(g, Items.FUSE_TICKS - 1);
+  b.trail = [b.x, b.y, bx + far, by]; // מקטע אופקי במרחק far מהפצצה
+  steps(g, 1);
+  assert(b.alive, 'שובל מחוץ לרדיוס – חי');
+});
+test('🪤 רדיוס המלכודת שהונחה שווה לגודל מלכודת האיסוף (1.792), גדול מהרדיוס הישן 1.15', () => {
+  assert.equal(Items.TRAP_R, 1.6 * 1.12);
+  assert(Items.TRAP_R > 1.15);
+  const { g, a, b, items } = fixture();
+  items.list.push({ id: 1, k: 'trap', x: 60, y: 60, o: a.id, until: 1e9, arm: 0 });
+  // בין 1.15 ל-1.792: פעם היה שורד, עכשיו נפסל
+  b.x = 60 + 1.4; b.y = 60; b.px = b.x; b.py = b.y; b.frozenUntil = 1e9; b.trail = [];
+  g.step();
+  assert(!b.alive, 'במרחק 1.4 נפסל ברדיוס החדש');
+  const d = g.events.find(e => e.type === 'death' && e.victim === b);
+  assert(d && d.reason === 'trap' && d.killer === a);
+  const { g: g2, a: a2, b: b2, items: items2 } = fixture();
+  items2.list.push({ id: 1, k: 'trap', x: 60, y: 60, o: a2.id, until: 1e9, arm: 0 });
+  b2.x = 60 + 1.9; b2.y = 60; b2.px = b2.x; b2.py = b2.y; b2.frozenUntil = 1e9; b2.trail = [];
+  g2.itemSystem = items2; g2.step();
+  assert(b2.alive, 'במרחק 1.9, מחוץ לרדיוס, שורד');
+});
+
 console.log('\n' + checks + ' בדיקות מצב מלכודת עברו');

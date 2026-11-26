@@ -594,7 +594,7 @@
           ctx.strokeStyle = 'rgba(191,97,106,' + (0.5 + 0.28 * pulse).toFixed(3) + ')';
           ctx.lineWidth = Math.max(2, unitPx * (0.12 + 0.05 * pulse));
           ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.stroke();
-          ctx.fillStyle = '#000'; ctx.font = Math.round(unitPx * 1.2) + 'px ' + EMOJI_FONT; ctx.fillText('⚠️', sx, sy);
+          ctx.fillStyle = '#000'; ctx.font = Math.round(unitPx * 1.8) + 'px ' + EMOJI_FONT; ctx.fillText('⚠️', sx, sy);
         } else {
           var left = Items.left(it, g.tickNo, nowMs, g.DT), R = Items.BLAST_R * unitPx;
           if (!over) {   // אזור הסכנה מתחת לדמויות: מילוי עדין שמתחזק בהדרגה ככל שהפתיל מתקצר (בלי הבהוב)

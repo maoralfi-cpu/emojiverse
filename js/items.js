@@ -11,12 +11,15 @@
   function Items() { this.list = []; this.nextId = 1; this.events = []; this.booms = []; }
   Items.TYPES = TYPES;
   Items.IDS = IDS;
-  Items.TRAP_R = 1.15;          // כמו רדיוס הבור
+  /* v9.26: רדיוס פגיעה וציור של מלכודת שהונחה = גודל ציור מלכודת האיסוף
+     (Packs.draw: R=1.6, oval אופקי R*1.12). פעם היה 1.15 כמו הבור. */
+  Items.TRAP_R = 1.6 * 1.12;
   Items.TRAP_TICKS = 30 * 60;   // 30 שנ' על המפה
   Items.GRACE_TICKS = 36;       // v9.24: חסד ~0.6 שנ' למטיל אחרי ההטלה
   Items.FREEZE_TICKS = 2 * 60;  // נשאר לתאימות רשת/בדיקות; מלכודת כבר לא מקפיאה
   Items.FUSE_TICKS = 3 * 60;    // פתיל 3 שנ'
-  Items.BLAST_R = 3.5;          // רדיוס פיצוץ (יחידות עולם)
+  Items.BLAST_R_OLD = 3.5;      // רדיוס עד v9.25
+  Items.BLAST_R = 3.5 * 2.5;    // v9.26: פי 2.5 (8.75 יח׳ = 17.5 תאים, CELL=0.5)
   Items.STACK_MAX = 9;          // v9.23: תקרת ערימת 🪤
   Items.isItem = function (id) { return id === 'trap' || id === 'bomb'; };
   Items.count = function (p) { return p && Items.isItem(p.item) ? Math.max(1, Math.min(Items.STACK_MAX, p.itemN || 1)) : 0; };
@@ -82,12 +85,15 @@
     }
   };
 
-  /* פיצוץ: ראש ברדיוס = נפסל (גם המטיל). שטח של יריבים ברדיוס הופך לניטרלי; השטח של המטיל לא נפגע */
+  /* פיצוץ v9.26: ראש או שובל פתוח ברדיוס = נפסל (גם המטיל, דרך g.kill כמו כל פסילה). שטח של יריבים ברדיוס ניטרלי; שטח המטיל לא נפגע */
   P.explode = function (g, it) {
     var R = Items.BLAST_R, R2 = R * R, ps = g.players, owner = ps[it.o - 1] || null, victims = [], k, p;
     for (k = 0; k < ps.length; k++) {
       p = ps[k];
-      if (p.alive && g.dist2(p.x, p.y, it.x, it.y) <= R2) victims.push(p);
+      if (!p.alive) continue;
+      if (p.invulnUntil && g.tickNo < p.invulnUntil) continue;
+      if (g.dist2(p.x, p.y, it.x, it.y) <= R2) { victims.push(p); continue; }
+      if (p.trail && p.trail.length && g.trailDist2(p, it.x, it.y, 0, true) <= R2) victims.push(p);
     }
     for (k = 0; k < victims.length; k++) g.kill(victims[k], victims[k] === owner ? null : owner, 'bomb');
     var C = g.CELL, G = g.G, hit = {}, cleared = 0;
