@@ -1,2 +1,2 @@
 /* גרסת האפליקציה – מתעדכנת אוטומטית ע"י deploy.sh (app: מספר גרסה, build: מזהה המטמון ב-sw.js) */
-window.EV_VERSION = { app: 'v9.23', build: 'emojiverse-20261125212739' };
+window.EV_VERSION = { app: 'v9.24', build: 'emojiverse-20261126112601' };

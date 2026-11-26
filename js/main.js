@@ -372,6 +372,7 @@
       if (livesStart && v.lives <= 0 && ev.reason !== 'left') { feed(nm(v) + ' הודח/ה 💀'); return; }
       if (ev.reason === 'pit') { feed(nm(v) + ' נפל/ה לבור מלכודת 🌋'); return; }
       if (ev.reason === 'bomb') { feed(bombText(v, ev.killer)); return; }
+      if (ev.reason === 'trap') { feed(trapText(v, ev.killer)); return; }
       if (ev.reason === 'left') { feed(nm(v) + ' עזב/ה את המשחק'); return; }
       if (ev.reason === 'enclosed') { feed(nm(v) + ' נכלא/ה בשטח של ' + (ev.killer === me ? 'אותך' : nm(ev.killer)) + (ev.killer === me ? '! ⚔️' : '')); return; }
       if (ev.killer === me) feed('הבסת את ' + nm(v) + '! ⚔️');
@@ -380,7 +381,7 @@
   }
   function myDeath(ev) {
     buzz(150);
-    var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש', enclosed: 'נכלאת בשטח', pit: 'נפלת לבור מלכודת 🌋', bomb: 'פצצה 💣' };
+    var reasons = { wall: 'קצה המפה', self: 'השובל שלך', head: 'ראש בראש', trail: 'חצו לך את השובל', territory: 'השטח נכבש', enclosed: 'נכלאת בשטח', pit: 'נפלת לבור מלכודת 🌋', bomb: 'פצצה 💣', trap: 'מלכודת 🪤' };
     var why = (reasons[ev.reason] || '') + (ev.killer ? ' – ' + nm(ev.killer) : '');
     me.diedAt = performance.now();
     if (livesStart && (me.lives || 0) <= 0) { feed('הודחת! (' + why + ') · צופים עד הסוף'); updateLivesHud(); return; }
@@ -507,6 +508,10 @@
     if (killer && killer !== v) return killer === me ? '💣 פוצצת את ' + nm(v) + '! ⚔️' : '💣 ' + nm(killer) + ' פוצץ/ה את ' + nm(v);
     return v === me ? '💣 עפת מהפצצה של עצמך' : '💣 ' + nm(v) + ' עף/ה מהפצצה של עצמו/ה';
   }
+  function trapText(v, killer) {
+    if (killer && killer !== v) return killer === me ? '🪤 ' + nm(v) + ' עלה/תה על המלכודת שלך! ⚔️' : '🪤 ' + nm(v) + ' עלה/תה על מלכודת של ' + nm(killer);
+    return v === me ? '🪤 עלית על המלכודת של עצמך' : '🪤 ' + nm(v) + ' עלה/תה על המלכודת של עצמו/ה';
+  }
   function useItem() {
     if (state !== 'play' || !g || !me || !me.alive || !me.item) return;   // מותר להטיל גם כשקפואים
     if (mode === 'client') {
@@ -529,15 +534,7 @@
       if (mode === 'host') itemFx.push({ a: 'boom', x: Math.round(ev.x * 100) / 100, y: Math.round(ev.y * 100) / 100, o: ev.ownerId });
       var o = g.players[ev.ownerId - 1];
       if (o === me && !ev.victims.length && ev.cells) feed('💣 הפצצה מחקה שטח של יריבים');
-    } else if (ev.type === 'snap') {
-      if (mode === 'host') itemFx.push({ a: 'snap', p: ev.playerId, o: ev.ownerId });
-      snapFeed(g.players[ev.playerId - 1], g.players[ev.ownerId - 1]);
     } else if (ev.type === 'drop' && ev.playerId === me.id) buzz(15);
-  }
-  function snapFeed(v, o) {
-    if (!v) return;
-    if (v === me) { feed('🪤 נתפסת במלכודת' + (o ? ' של ' + nm(o) : '') + ' – קפוא/ה 2 שניות'); buzz(60); }
-    else if (o === me) feed('🪤 ' + nm(v) + ' נתפס/ה במלכודת שלך!');
   }
   function addBoom(x, y) { if (fxLevel() !== 'off') booms.push({ x: x, y: y, t0: performance.now() }); }
   /* לקוח: מצב הפריטים מהמארח */
@@ -546,7 +543,7 @@
     items.applyNet(g, m, performance.now(), TICK_MS);
     (m.fx || []).forEach(function (f) {
       if (f.a === 'boom') addBoom(f.x, f.y);
-      else if (f.a === 'snap') snapFeed(g.players[f.p - 1], g.players[f.o - 1]);
+
     });
     updateItemBtn(true);
   }
@@ -571,7 +568,7 @@
     }
   }
   if (itemBtn) itemBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); useItem(); });
-  /* ציור: 🪤 (שלי ברור, של אחרים חלש), 💣 עם ספירה ועיגול טווח, פיצוץ – טבעת רכה מתרחבת בלי הבהוב */
+  /* ציור: מלכודת שהונחה (⚠️ + טבעת אדומה רכה), 💣 עם ספירה ועיגול טווח, פיצוץ – טבעת רכה מתרחבת בלי הבהוב */
   var EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
   function drawItems(over, cw, ch, vx0, vy0, vw, vh) {
     var lvl = fxLevel(), list = items.list, k, nowMs = performance.now();
@@ -585,12 +582,19 @@
         var sx = (wx + xo[b] - vx0) * unitPx, sy = (wy + yo[a] - vy0) * unitPx;
         if (it.k === 'trap') {
           if (over) continue;
-          ctx.globalAlpha = mine ? 1 : 0.28;
-          ctx.strokeStyle = mine ? (lineCss[it.o] || '#4c566a') : 'rgba(76,86,106,.6)'; ctx.lineWidth = Math.max(1.5, unitPx * 0.08);
-          ctx.setLineDash(mine ? [] : [unitPx * 0.25, unitPx * 0.25]);
-          ctx.beginPath(); ctx.arc(sx, sy, Items.TRAP_R * unitPx, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-          ctx.fillStyle = '#000'; ctx.font = Math.round(unitPx * 1.35) + 'px ' + EMOJI_FONT; ctx.fillText('🪤', sx, sy);
-          ctx.globalAlpha = 1;
+          // v9.24: מלכודת שהונחה – בסיס וטבעת אדומים רכים עם ⚠️, בלי הבהוב (מופחת: סטטי)
+          var pulse = fxLevel() === 'full' ? 0.5 + 0.5 * Math.sin(nowMs / 420) : 0.65;
+          var rr = Items.TRAP_R * unitPx;
+          var al = 0.22 + 0.14 * pulse;
+          var gr = ctx.createRadialGradient(sx, sy, 0, sx, sy, rr * 1.15);
+          gr.addColorStop(0, 'rgba(191,97,106,' + al.toFixed(3) + ')');
+          gr.addColorStop(0.7, 'rgba(191,97,106,' + (al * 0.55).toFixed(3) + ')');
+          gr.addColorStop(1, 'rgba(191,97,106,0)');
+          ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(sx, sy, rr * 1.15, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = 'rgba(191,97,106,' + (0.5 + 0.28 * pulse).toFixed(3) + ')';
+          ctx.lineWidth = Math.max(2, unitPx * (0.12 + 0.05 * pulse));
+          ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.stroke();
+          ctx.fillStyle = '#000'; ctx.font = Math.round(unitPx * 1.2) + 'px ' + EMOJI_FONT; ctx.fillText('⚠️', sx, sy);
         } else {
           var left = Items.left(it, g.tickNo, nowMs, g.DT), R = Items.BLAST_R * unitPx;
           if (!over) {   // אזור הסכנה מתחת לדמויות: מילוי עדין שמתחזק בהדרגה ככל שהפתיל מתקצר (בלי הבהוב)
@@ -969,7 +973,7 @@
     if (best > BEST.pct) BEST.pct = best;
     if (kills > BEST.kills) BEST.kills = kills;
     save('kovesh.best', BEST);
-    var reasons = { self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש', enclosed: 'נכלאת בתוך לולאה', pit: 'נפלת לבור מלכודת 🌋', bomb: 'עפת מפצצה 💣' };
+    var reasons = { self: 'נגעת בשובל של עצמך', head: 'התנגשות ראש בראש', trail: 'מישהו חצה את השובל שלך', territory: 'כל השטח שלך נכבש', enclosed: 'נכלאת בתוך לולאה', pit: 'נפלת לבור מלכודת 🌋', bomb: 'עפת מפצצה 💣', trap: 'עלית על מלכודת ⚠️' };
     var r = reasons[ev.reason] || '';
     if (ev.killer) r += ' – ' + nm(ev.killer);
     $('overReason').textContent = r;
@@ -1120,7 +1124,7 @@
     setState: function (st) { state = st; }, resize: resize,
     get game() { return g; }, get me() { return me; }, get state() { return state; }, get mode() { return mode; }, get match() { return match; },
     get pits() { return pits; }, get packs() { return packs; }, onPackNet: onPackNet, clearPackVisual: clearPackVisual,
-    get items() { return items; }, get itemsOn() { return itemsOn; }, onItemsNet: onItemsNet, useItemFor: useItemFor, bombText: bombText,
+    get items() { return items; }, get itemsOn() { return itemsOn; }, onItemsNet: onItemsNet, useItemFor: useItemFor, bombText: bombText, trapText: trapText,
     get livesStart() { return livesStart; }, get livesEnd() { return livesEnd; }, applyLives: applyLives,
     TICK_MS: TICK_MS
   };

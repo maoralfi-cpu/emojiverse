@@ -89,28 +89,40 @@ test('הטלה: במיקום הראש, התא מתרוקן; בלי פריט – 
   a.item = 'trap'; const it = items.drop(g, a);
   assert(it && it.k === 'trap' && Math.abs(it.x - a.x) < 1e-9 && it.o === a.id); assert.equal(a.item, null);
 });
-test('🪤 יריב שנכנס נקפא 2 שנ׳ (בלי תנועה ובלי פנייה), השובל נשאר, המלכודת נעלמת', () => {
+test('🪤 יריב שעולה נפסל (trap, קרדיט לבעלים), המלכודת נעלמת', () => {
   const { g, a, b, items } = fixture();
   a.item = 'trap'; items.drop(g, a);
-  const t = items.list[0]; t.x = 70; t.y = 60;   // מזיזים את המלכודת לדרכו של B
+  const t = items.list[0]; t.x = 70; t.y = 60; t.arm = 0;   // מזיזים לדרכו של B, כבר מזוינת
   b.h = b.target = 0; b.trail = [];
-  let frozeAt = -1;
-  for (let i = 0; i < 120 && frozeAt < 0; i++) { g.step(); if (Items.frozen(b, g.tickNo)) frozeAt = g.tickNo; }
-  assert(frozeAt > 0, 'B לא נקפא'); assert.equal(items.list.length, 0);
-  assert(items.events.some(e => e.type === 'snap' && e.playerId === b.id && e.ownerId === a.id));
-  const x = b.x, y = b.y, h = b.h, tl = b.trail.length; b.target = 2;
-  steps(g, Items.FREEZE_TICKS - 2);
-  assert.equal(b.x, x); assert.equal(b.y, y); assert.equal(b.h, h); assert.equal(b.trail.length, tl);
-  assert(b.alive && tl > 0, 'השובל פתוח');
-  steps(g, 5); assert(!Items.frozen(b, g.tickNo)); assert(b.x !== x || b.y !== y);
+  let diedAt = -1;
+  for (let i = 0; i < 120 && diedAt < 0; i++) { g.step(); if (!b.alive) diedAt = g.tickNo; }
+  assert(diedAt > 0, 'B לא נפסל'); assert.equal(items.list.length, 0);
+  const d = g.events.find(e => e.type === 'death' && e.victim === b);
+  assert(d && d.reason === 'trap' && d.killer === a);
+  assert.equal(a.kills, 1); assert(a.alive);
+  assert(items.events.some(e => e.type === 'trip' && e.playerId === b.id && e.ownerId === a.id));
 });
-test('🪤 הבעלים חסין; מלכודת פגה אחרי 30 שנ׳', () => {
+test('🪤 המטיל חסין בחסד 0.6 שנ׳, ואחריו נפסל בלי קרדיט', () => {
   const { g, a, items } = fixture();
-  a.item = 'trap'; items.drop(g, a); a.h = a.target = 0;
-  steps(g, 30); assert(!Items.frozen(a, g.tickNo)); assert.equal(items.list.length, 1);
-  a.x = 20; a.y = 20; a.h = a.target = Math.PI / 2;
+  a.item = 'trap'; const it = items.drop(g, a);
+  assert(it && it.arm === g.tickNo + Items.GRACE_TICKS);
+  a.frozenUntil = 1e9; a.h = a.target = 0;   // נשאר על נקודת ההטלה
+  steps(g, Items.GRACE_TICKS - 1);
+  assert(a.alive, 'בחסד המטיל חי'); assert.equal(items.list.length, 1);
+  g.events.length = 0;
+  steps(g, 1);
+  assert(!a.alive, 'אחרי החסד המטיל נפסל');
+  const d = g.events.find(e => e.type === 'death' && e.victim === a);
+  assert(d && d.reason === 'trap' && !d.killer);
+  assert.equal(a.kills, 0); assert.equal(items.list.length, 0);
+});
+test('🪤 מלכודת פגה אחרי 30 שנ׳ אם אף אחד לא עלה עליה', () => {
+  const { g, a, items } = fixture();
+  a.item = 'trap'; items.drop(g, a);
+  a.x = 80; a.y = 80; a.px = a.x; a.py = a.y; a.frozenUntil = 1e9;
   steps(g, Items.TRAP_TICKS); assert.equal(items.list.length, 0);
   assert(items.events.some(e => e.type === 'expire'));
+  assert(a.alive);
 });
 test('💣 מתפוצץ אחרי 3 שנ׳: ראש ברדיוס נפסל (bomb, קרדיט לבעלים), שטח יריב ניטרלי, שטח הבעלים נשאר', () => {
   const { g, a, b, items } = fixture();
@@ -156,10 +168,11 @@ test('בוט: מטיל פצצה כשיריב קרוב ובורח ממנה', () =
   assert(Math.abs(Game.angDiff(b.target, 0)) < 0.8, 'בורח הרחק מהפצצה ' + b.target);
   assert(isFinite(ang) && isFinite(away));
 });
-test('בוט נמנע ממלכודת של אחר (כמו מבור)', () => {
+test('בוט נמנע מכל מלכודת שהונחה, כולל שלו', () => {
   const { g, a, b, items } = fixture();
-  items.list.push({ id: 9, k: 'trap', x: 63, y: 60, o: a.id, until: 1e9 });
-  assert(items.dangerAt(g, b, 63, 60, 1.4)); assert(!items.dangerAt(g, a, 63, 60, 1.4));
+  items.list.push({ id: 9, k: 'trap', x: 63, y: 60, o: a.id, until: 1e9, arm: 0 });
+  assert(items.dangerAt(g, b, 63, 60, 1.4), 'יריב נמנע');
+  assert(items.dangerAt(g, a, 63, 60, 1.4), 'גם הבעלים נמנע');
 });
 test('סנכרון רשת: netState → applyNet משחזר פריטים, ידיים וקפיאה', () => {
   const { g, a, b, items } = fixture();
@@ -179,7 +192,10 @@ test('השחקן במצב מהיר: הבורות/מלכודות נבדקים ב�
   const g = new Game({ size: 100, speed: 600, rand: seeded(5) });
   const a = g.addPlayer({}), b = g.addPlayer({}); g.spawn(a, { x: 80, y: 80 }); g.spawn(b, { x: 10, y: 10 });
   const items = new Items(); g.itemSystem = items;
-  items.list.push({ id: 1, k: 'trap', x: 15, y: 10, o: a.id, until: 1e9 });
-  b.h = b.target = 0; g.step(); assert(Items.frozen(b, g.tickNo));
+  items.list.push({ id: 1, k: 'trap', x: 15, y: 10, o: a.id, until: 1e9, arm: 0 });
+  b.h = b.target = 0; g.step();
+  assert(!b.alive);
+  const d = g.events.find(e => e.type === 'death' && e.victim === b);
+  assert(d && d.reason === 'trap' && d.killer === a);
 });
 console.log('\n' + checks + ' בדיקות מצב מלכודת עברו');

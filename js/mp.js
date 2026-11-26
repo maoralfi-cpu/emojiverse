@@ -603,6 +603,7 @@
       else if (Core.livesStart && (v.lives || 0) <= 0) Core.feed(Core.nm(v) + ' הודח/ה 💀');
       else if (m.r === 'pit') Core.feed(Core.nm(v) + ' נפל/ה לבור מלכודת 🌋');
       else if (m.r === 'bomb') Core.feed(Core.bombText(v, by));
+      else if (m.r === 'trap') Core.feed(Core.trapText(v, by));
       else if (m.r === 'enclosed' && by) Core.feed(Core.nm(v) + ' נכלא/ה בשטח של ' + (by === Core.me ? 'אותך! ⚔️' : Core.nm(by)));
       else if (by === Core.me) Core.feed('הבסת את ' + Core.nm(v) + '! ⚔️');
       else if (by) Core.feed(Core.nm(by) + ' הביס את ' + Core.nm(v));

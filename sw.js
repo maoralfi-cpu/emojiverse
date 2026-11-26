@@ -1,5 +1,5 @@
 /* Emojiverse (לשעבר כובש) – Service Worker: שומר את כל הקבצים לעבודה מלאה בלי אינטרנט */
-const VERSION = 'emojiverse-20261125212739';
+const VERSION = 'emojiverse-20261126112601';
 const STAMP = VERSION.split('-').pop();
 const ASSETS = [
   './', './index.html', './style.css', './manifest.webmanifest',

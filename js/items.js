@@ -13,7 +13,8 @@
   Items.IDS = IDS;
   Items.TRAP_R = 1.15;          // כמו רדיוס הבור
   Items.TRAP_TICKS = 30 * 60;   // 30 שנ' על המפה
-  Items.FREEZE_TICKS = 2 * 60;  // קפיאה 2 שנ'
+  Items.GRACE_TICKS = 36;       // v9.24: חסד ~0.6 שנ' למטיל אחרי ההטלה
+  Items.FREEZE_TICKS = 2 * 60;  // נשאר לתאימות רשת/בדיקות; מלכודת כבר לא מקפיאה
   Items.FUSE_TICKS = 3 * 60;    // פתיל 3 שנ'
   Items.BLAST_R = 3.5;          // רדיוס פיצוץ (יחידות עולם)
   Items.STACK_MAX = 9;          // v9.23: תקרת ערימת 🪤
@@ -31,6 +32,7 @@
   P.drop = function (g, p) {
     if (!g || !p || !p.alive || !Items.isItem(p.item)) return null;
     var k = p.item, it = { id: this.nextId++, k: k, x: g.wrap(p.x), y: g.wrap(p.y), o: p.id, until: g.tickNo + (k === 'trap' ? Items.TRAP_TICKS : Items.FUSE_TICKS) };
+    if (k === 'trap') it.arm = g.tickNo + Items.GRACE_TICKS;
     if (k === 'trap' && (p.itemN || 1) > 1) p.itemN--;
     else { p.item = null; p.itemN = 0; }
     this.list.push(it);
@@ -55,16 +57,19 @@
     for (i = 0; i < this.list.length; ) {
       it = this.list[i];
       if (it.k === 'trap') {
-        var hit = null;
+        var hit = null, armed = g.tickNo >= (it.arm || 0);
         for (k = 0; k < ps.length && !hit; k++) {
           p = ps[k];
-          if (!p.alive || p.id === it.o || Items.frozen(p, g.tickNo)) continue;   // הבעלים חסין
+          if (!p.alive) continue;
+          if (p.invulnUntil && g.tickNo < p.invulnUntil) continue;
+          if (!armed && p.id === it.o) continue;   // חסד קצר רק למטיל
           if (segHit2(g, p, it.x, it.y) <= r2) hit = p;
         }
         if (hit) {
-          hit.frozenUntil = g.tickNo + Items.FREEZE_TICKS;
+          var owner = ps[it.o - 1] || null;
           this.list.splice(i, 1);
-          this.events.push({ type: 'snap', playerId: hit.id, ownerId: it.o, x: it.x, y: it.y });
+          this.events.push({ type: 'trip', playerId: hit.id, ownerId: it.o, x: it.x, y: it.y });
+          g.kill(hit, hit.id === it.o ? null : owner, 'trap');
           continue;
         }
         if (g.tickNo >= it.until) { this.list.splice(i, 1); this.events.push({ type: 'expire', item: it }); continue; }
@@ -103,13 +108,19 @@
     this.events.push({ type: 'boom', x: it.x, y: it.y, ownerId: it.o, victims: victims.map(function (v) { return v.id; }), cells: cleared });
   };
 
-  /* בוטים: סכנה בנקודה – מלכודת של אחר או פצצה חיה (כולל שלי) */
+  /* בוטים: סכנה בנקודה – כל מלכודת שהונחה (כולל שלי) או פצצה חיה */
   P.dangerAt = function (g, p, x, y, margin) {
     for (var i = 0; i < this.list.length; i++) {
-      var it = this.list[i], r;
-      if (it.k === 'trap') { if (it.o === p.id) continue; r = Items.TRAP_R + (margin || 0); }
+      var it = this.list[i], r, d2, here;
+      if (it.k === 'trap') r = Items.TRAP_R + (margin || 0);
       else r = Items.BLAST_R + 1;
-      if (g.dist2(x, y, it.x, it.y) <= r * r) return true;
+      d2 = g.dist2(x, y, it.x, it.y);
+      if (d2 > r * r) continue;
+      if (it.k === 'trap') {   // כבר עומדים עליה: לא חוסמים כיוון בריחה, רק התקרבות
+        here = g.dist2(p.x, p.y, it.x, it.y);
+        if (here <= r * r && d2 >= here - 1e-9) continue;
+      }
+      return true;
     }
     return false;
   };

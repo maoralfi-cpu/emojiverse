@@ -44,6 +44,7 @@
   var PLAN = {
     trail: ['snap', 'slash', 'pop'],
     pit: ['implode', 'burst'],
+    trap: ['implode', 'burst'],
     enclosed: ['pulse', 'cage', 'implode', 'burst'],
     head: ['shock', 'knock', 'stars'],
     self: ['wobble', 'dizzy'],
