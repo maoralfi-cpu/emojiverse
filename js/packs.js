@@ -249,12 +249,12 @@
 
   function itemsRef() { return (typeof Items !== 'undefined') ? Items : null; }
   function trapsOf(p) { var I = itemsRef(); if (I && I.traps) return I.traps(p); return p && p.traps ? p.traps : (p && p.item === 'trap' ? (p.itemN || 1) : 0); }
-  function hasBomb(p) { var I = itemsRef(); if (I && I.hasBomb) return I.hasBomb(p); return !!(p && (p.bomb || p.item === 'bomb')); }
+  function bombsOf(p) { var I = itemsRef(); if (I && I.bombs) return I.bombs(p); return p && p.bomb ? p.bomb : (p && p.item === 'bomb' ? (p.itemN || 1) : 0); }
   function giveItem(p, kind) {
     var I = itemsRef();
     if (I && I.give) return I.give(p, kind);
-    if (kind === 'trap') { p.traps = Math.min(9, trapsOf(p) + 1); p.item = 'trap'; p.itemN = p.traps; return true; }
-    if (kind === 'bomb') { if (hasBomb(p)) return false; p.bomb = 1; if (!p.traps) { p.item = 'bomb'; p.itemN = 1; } return true; }
+    if (kind === 'trap') { if (trapsOf(p) >= 9) return false; p.traps = trapsOf(p) + 1; p.item = 'trap'; p.itemN = p.traps; return true; }
+    if (kind === 'bomb') { if (bombsOf(p) >= 9) return false; p.bomb = bombsOf(p) + 1; if (!p.traps) { p.item = 'bomb'; p.itemN = p.bomb; } return true; }
     return false;
   }
 
@@ -271,14 +271,10 @@
     var eid = pack.effectId;
     // v9.23: 🪤 נערם עד 9; בתקרה האיסוף לא נספר והמלכודת נשארת
     if (ITEMS[eid] && eid === 'trap' && trapsOf(player) >= 9) return null;
-    if (eid === 'bomb' && hasBomb(player) && pack.kind === 'bombloot') return null;   // כבר מחזיקים 💣 – פצצת רצפה נשארת
+    if (ITEMS[eid] && eid === 'bomb' && bombsOf(player) >= 9) return null;   // v9.29: 💣 נערם עד 9; בתקרה נשאר על המפה
     this.removePack(pack.id);
-    if (ITEMS[eid]) {   // v9.28: 🪤 ו-💣 בתאים נפרדים; איסוף אחד לא מוחק את השני
-      if (eid === 'bomb' && hasBomb(player)) {
-        /* קופסה כשכבר יש פצצה: הקופסה נצרכת, המלאי לא משתנה */
-      } else {
-        giveItem(player, eid);
-      }
+    if (ITEMS[eid]) {   // v9.28/v9.29: 🪤 ו-💣 בתאים נפרדים ונערמים, איסוף אחד לא מוחק את השני
+      giveItem(player, eid);
       if (pack.kind === 'traploot') this.trapLootCD = Math.max(this.trapLootCD, TRAPLOOT_EVERY);
       if (pack.kind === 'bombloot') this.bombLootCD = Math.max(this.bombLootCD, TRAPLOOT_EVERY);
       this.events.push({ type: 'pick', packId: pack.id, playerId: player.id, effectId: eid });
@@ -329,7 +325,7 @@
         if (!p.alive) continue;
         if (pack.kind === 'life' && !canGain(p, this.lifeCap)) continue;   // בתקרה – הלב נשאר לאחרים
         if ((pack.kind === 'traploot' || pack.effectId === 'trap') && trapsOf(p) >= 9) continue;
-        if (pack.kind === 'bombloot' && hasBomb(p)) continue;
+        if ((pack.kind === 'bombloot' || pack.effectId === 'bomb') && bombsOf(p) >= 9) continue;
         d = g.dist2(p.x, p.y, pack.x, pack.y);
         if (d <= bestD) { bestD = d; best = p; }
       }
@@ -401,8 +397,7 @@
     var p = g && g.players[playerId - 1];
     if (ITEMS[effectId]) {
       if (p) {
-        if (effectId === 'bomb' && hasBomb(p)) { /* כבר יש 💣 */ }
-        else giveItem(p, effectId);
+        giveItem(p, effectId);
       }
       return ITEMS[effectId];
     }

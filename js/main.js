@@ -522,7 +522,7 @@
     if (mode === 'client') {
       if (MPH && MPH.onUse) MPH.onUse(k);
       if (k === 'trap') me.traps--;
-      else me.bomb = 0;
+      else me.bomb--;
       Items.sync(me);
       updateItemBtn(true); return;   // המארח מחליט ומשדר
     }
@@ -558,11 +558,11 @@
   function updateItemBtn(force) {
     var play = state === 'play' && g && me && me.alive && itemsOn;
     if (play) Items.adopt(me);
-    var n = play ? Items.traps(me) : 0, hasB = play && Items.hasBomb(me);
-    var key = (n ? 't' + n : '') + (hasB ? 'b' : '');
+    var n = play ? Items.traps(me) : 0, nb = play ? Items.bombs(me) : 0;
+    var key = (n ? 't' + n : '') + (nb ? 'b' + nb : '');
     if (key === shownItem && !force) return;
     shownItem = key;
-    var badge = $('itemN'), icon = $('itemIcon');
+    var badge = $('itemN'), icon = $('itemIcon'), bBadge = $('bombN');
     if (itemBtn) {
       if (!n) { itemBtn.classList.add('hidden'); if (badge) badge.classList.add('hidden'); }
       else {
@@ -575,7 +575,17 @@
         }
       }
     }
-    if (bombBtn) bombBtn.classList.toggle('hidden', !hasB);
+    if (bombBtn) {
+      if (!nb) { bombBtn.classList.add('hidden'); if (bBadge) bBadge.classList.add('hidden'); }
+      else {
+        bombBtn.setAttribute('aria-label', 'הטל פצצה' + (nb > 1 ? ' ×' + nb : ''));
+        bombBtn.classList.remove('hidden');
+        if (bBadge) {
+          if (nb > 1) { bBadge.textContent = String(nb); bBadge.classList.remove('hidden'); }
+          else bBadge.classList.add('hidden');
+        }
+      }
+    }
   }
   if (itemBtn) itemBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); useItem('trap'); });
   if (bombBtn) bombBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); useItem('bomb'); });

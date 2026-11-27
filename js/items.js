@@ -1,5 +1,5 @@
 /* Emojiverse v9.21 – מצב מלכודת (סעיף 23): 🪤 מלכודת ו־💣 פצצה.
-   קופסת הפתעה יכולה להכיל פריט (רק כשהמצב פעיל). v9.28: שני תאים נפרדים – p.traps (0–9) ו-p.bomb (0/1) – ושני כפתורים.
+   קופסת הפתעה יכולה להכיל פריט (רק כשהמצב פעיל). v9.28/v9.29: שני תאים נפרדים – p.traps (0–9) ו-p.bomb (0–9) – ושני כפתורים.
    סימולציה רק בסולו/מארח (Game.step קורא ל-tick); הלקוח מקבל מצב מלא בהודעת items ומצייר. */
 (function (root) {
   'use strict';
@@ -20,32 +20,35 @@
   Items.FUSE_TICKS = 3 * 60;    // פתיל 3 שנ'
   Items.BLAST_R_OLD = 3.5;      // רדיוס עד v9.25
   Items.BLAST_R = 3.5 * 2.5;    // v9.26: פי 2.5 (8.75 יח׳ = 17.5 תאים, CELL=0.5)
-  Items.STACK_MAX = 9;          // v9.23: תקרת ערימת 🪤
+  Items.STACK_MAX = 9;          // תקרת ערימת 🪤 ו-💣
   Items.isItem = function (id) { return id === 'trap' || id === 'bomb'; };
-  /* v9.28: מלכודות ופצצה נשמרות יחד. adopt קורא גם כתיבה ישנה ל-item/itemN. */
+  /* v9.28/v9.29: מלכודות ופצצות נשמרות יחד ונערמות עד 9. adopt קורא גם כתיבה ישנה ל-item/itemN. */
   Items.adopt = function (p) {
     if (!p) return p;
     if (p.traps == null) p.traps = 0;
-    if (!p.bomb) p.bomb = 0;
+    if (p.bomb == null) p.bomb = 0;
     if (!p.traps && !p.bomb) {
       if (p.item === 'trap') p.traps = Math.max(1, Math.min(Items.STACK_MAX, p.itemN || 1));
-      else if (p.item === 'bomb') p.bomb = 1;
+      else if (p.item === 'bomb') p.bomb = Math.max(1, Math.min(Items.STACK_MAX, p.itemN || 1));
     } else if (!p.traps && p.item === 'trap' && (p.itemN || 0) > 0) {
       p.traps = Math.min(Items.STACK_MAX, p.itemN);
-    } else if (!p.bomb && p.item === 'bomb') p.bomb = 1;
+    } else if (!p.bomb && p.item === 'bomb' && (p.itemN || 0) > 0) {
+      p.bomb = Math.min(Items.STACK_MAX, p.itemN || 1);
+    }
     return p;
   };
   Items.sync = function (p) {
     if (!p) return p;
     p.traps = Math.max(0, Math.min(Items.STACK_MAX, p.traps | 0));
-    p.bomb = p.bomb ? 1 : 0;
+    p.bomb = Math.max(0, Math.min(Items.STACK_MAX, p.bomb | 0));
     if (p.traps > 0) { p.item = 'trap'; p.itemN = p.traps; }
-    else if (p.bomb) { p.item = 'bomb'; p.itemN = 1; }
+    else if (p.bomb) { p.item = 'bomb'; p.itemN = p.bomb; }
     else { p.item = null; p.itemN = 0; }
     return p;
   };
   Items.traps = function (p) { return p ? Items.sync(p).traps : 0; };
-  Items.hasBomb = function (p) { return !!(p && Items.sync(p).bomb); };
+  Items.bombs = function (p) { return p ? Items.sync(p).bomb : 0; };
+  Items.hasBomb = function (p) { return Items.bombs(p) > 0; };
   Items.count = function (p) { return Items.traps(p); };
   Items.give = function (p, kind) {
     if (!p) return false;
@@ -55,8 +58,8 @@
       p.traps++; Items.sync(p); return true;
     }
     if (kind === 'bomb') {
-      if (p.bomb) return false;
-      p.bomb = 1; Items.sync(p); return true;
+      if (p.bomb >= Items.STACK_MAX) return false;
+      p.bomb++; Items.sync(p); return true;
     }
     return false;
   };
@@ -79,7 +82,7 @@
     var it = { id: this.nextId++, k: k, x: g.wrap(p.x), y: g.wrap(p.y), o: p.id, until: g.tickNo + (k === 'trap' ? Items.TRAP_TICKS : Items.FUSE_TICKS) };
     if (k === 'trap') it.arm = g.tickNo + Items.GRACE_TICKS;
     if (k === 'trap') p.traps--;
-    else p.bomb = 0;
+    else p.bomb--;
     Items.sync(p);
     this.list.push(it);
     this.events.push({ type: 'drop', item: it, playerId: p.id });
@@ -192,7 +195,7 @@
       var p = g.players[k];
       Items.adopt(p);
       held.push(Items.traps(p));
-      bombs.push(Items.hasBomb(p) ? 1 : 0);
+      bombs.push(Items.bombs(p));
       frz.push(Items.frozen(p, t) ? p.frozenUntil - t : 0);
     }
     var list = this.list.map(function (it) { return { id: it.id, k: it.k === 'bomb' ? 2 : 1, x: Math.round(it.x * 100) / 100, y: Math.round(it.y * 100) / 100, o: it.o, l: Math.max(0, it.until - t) }; });
@@ -211,7 +214,7 @@
       var p = g.players[k], h = (m.held || [])[k] || 0, f = (m.frz || [])[k];
       if (hasBombs) {
         p.traps = (h >= 1 && h <= 9) ? h : 0;
-        p.bomb = m.bombs[k] ? 1 : 0;
+        var b = m.bombs[k] || 0; p.bomb = (b >= 1 && b <= 9) ? b : 0;
       } else if (h === 10) { p.traps = 0; p.bomb = 1; }   // מארח ישן: 10 = פצצה בלבד
       else if (h >= 1 && h <= 9) { p.traps = h; p.bomb = 0; }
       else { p.traps = 0; p.bomb = 0; }
